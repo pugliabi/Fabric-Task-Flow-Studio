@@ -1,6 +1,5 @@
 """Tests for taskflow-gen.py — verifies task flow JSON output matches Fabric schema."""
 
-import json
 import sys
 from pathlib import Path
 
@@ -90,8 +89,8 @@ def test_taskflow_gen_imports():
 
 # ── Import the module under test ──────────────────────────────────────────
 
-import importlib.util as _importlib_util
-import pytest
+import importlib.util as _importlib_util  # noqa: E402
+import pytest  # noqa: E402
 
 _spec = _importlib_util.spec_from_file_location(
     "taskflow_gen",

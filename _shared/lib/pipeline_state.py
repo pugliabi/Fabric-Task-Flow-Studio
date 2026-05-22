@@ -109,10 +109,30 @@ def _load_state(project: str) -> dict:
 
 
 def _save_state(project: str, state: dict) -> None:
+    """Persist pipeline-state.json atomically.
+
+    Writes to a temp file in the same directory then ``os.replace`` so a
+    crash mid-write cannot leave the canonical state file partially written.
+    """
+    import os
+    import tempfile
+
     path = _state_path(project)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8", newline="\n") as handle:
-        json.dump(state, handle, indent=2)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=".pipeline-state-", suffix=".json.tmp", dir=str(path.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(state, handle, indent=2)
+        os.replace(tmp_name, path)
+    except Exception:
+        # Best-effort cleanup on failure; don't mask original exception.
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 
@@ -141,9 +161,11 @@ def _verify_output(phase: str, project: str) -> tuple[bool, str]:
     project_dir = _repo_root() / "_projects" / project
     missing: list[str] = []
     unfilled: list[str] = []
+    # Markers identifying a file as still containing scaffolded placeholder
+    # content. ``items: []`` is intentionally omitted — it is valid YAML for
+    # a sparse architecture and was producing false negatives.
     template_markers = [
         "task_flow: TBD",
-        "items: []",
         "<!-- AGENT: FILL -->",
         "<!-- AGENT: FILL",
     ]
@@ -189,11 +211,19 @@ def advance(project: str, approved: bool = False, revise: bool = False,
             return state
 
         if feedback:
+            # Strip ASCII control chars (except whitespace) to prevent
+            # smuggling instructions past human review when the file is
+            # presented to the next agent. See _sanitize_user_field in
+            # pipeline_prompts.py for the symmetric prompt-time sanitizer.
+            import re as _re
+            safe_feedback = _re.sub(
+                r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", str(feedback)
+            )
             fb_path = _repo_root() / "_projects" / project / "docs" / "sign-off-feedback.md"
             fb_content = (
                 f"# Sign-Off Feedback (Revision {revision_count + 1})\n\n"
                 f"**Date:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n\n"
-                f"## User Feedback\n\n{feedback}\n"
+                f"## User Feedback\n\n{safe_feedback}\n"
             )
             fb_path.write_text(fb_content, encoding="utf-8", newline="\n")
             print(f"  📝 Feedback saved to {fb_path.relative_to(_repo_root())}")

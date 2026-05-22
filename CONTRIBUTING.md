@@ -56,7 +56,8 @@ Pipeline utilities live in `_shared/scripts/`. Shared library modules live in `_
 **Registries:** All canonical registry files live in `_shared/registry/`:
 - `_shared/registry/item-type-registry.json` — Single source of truth for item type metadata including skillset (LC/CF)
 - `_shared/registry/deployment-order.json` — Canonical deployment order for all task flows
-- `_shared/registry/signal-categories.json` — Signal mapper keyword-to-category mappings
+- `_shared/registry/signal-categories.json` — Signal mapper keyword-to-category mappings (lexical layer)
+- `_shared/registry/capability-registry.json` — Semantic capability layer: intents → capabilities → Fabric items (see [ADR-0002](docs/adr/0002-semantic-capability-layer.md))
 - `_shared/registry/skills-registry.json` — Skill metadata for pipeline orchestration
 - `_shared/registry/validation-checklists.json` — Post-deployment manual steps and phases per task flow
 

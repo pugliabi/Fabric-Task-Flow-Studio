@@ -1,11 +1,13 @@
 ---
 name: fabric-heal
 description: >
-  Self-healing skill that improves signal mapper keyword coverage through
-  iterative problem generation and keyword patching. Use when user says
-  "heal signal mapper", "improve keyword coverage", "generate problem
-  statements", "run healing loop", "patch signal mapper", or asks about
-  "signal mapper gaps". Do NOT use for project architecture or deployment.
+  Self-healing skill that improves signal mapper keyword coverage and
+  capability coverage (ADR-0002) through iterative problem generation and
+  keyword/capability patching. Use when user says "heal signal mapper",
+  "improve keyword coverage", "improve capability coverage", "generate
+  problem statements", "run healing loop", "patch signal mapper", or asks
+  about "signal mapper gaps" or "capability gaps". Do NOT use for project
+  architecture or deployment.
 ---
 
 # Fabric Signal Mapper Healer

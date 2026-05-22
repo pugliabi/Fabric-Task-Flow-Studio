@@ -11,10 +11,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from banner import print_banner
-from new_project import sanitize_name, scaffold
+# NOTE: The imports below intentionally re-export private helpers from the
+# pipeline modules. Tests (test_run_pipeline.py and friends) reach into this
+# module to monkeypatch internals, so ruff must NOT prune them. The `noqa`
+# tags keep the re-exports stable across future `ruff --fix` runs.
+
+from banner import print_banner  # noqa: F401
+from new_project import sanitize_name, scaffold  # noqa: F401
 from paths import REPO_ROOT
-from pipeline_precompute import (
+from pipeline_precompute import (  # noqa: F401
     _extract_task_flow,
     _extract_top_task_flow,
     _fast_forward_to_signoff,
@@ -27,14 +32,14 @@ from pipeline_precompute import (
     _generate_validation_report,
     _run_precompute,
 )
-from pipeline_prompts import (
+from pipeline_prompts import (  # noqa: F401
     _extract_decisions_from_handoff,
     _extract_diagram,
     _project_path,
     _prompt_for_phase,
     get_next_prompt,
 )
-from pipeline_state import (
+from pipeline_state import (  # noqa: F401
     MIN_CONTENT_SIZE,
     _PLACEHOLDER_NAMES,
     _get_registry,
@@ -242,6 +247,35 @@ def _print_discovery_summary(project: str) -> None:
             print(f"  {idx}. {tf_id}   score {score}   signals: {signals_str}")
     else:
         print("  — no candidates yet (signal mapper may not have run) —")
+    print()
+
+    # ---- Required Capabilities (semantic layer) ---------------------------
+    cap_cache_path = docs_dir / ".capability-mapper-cache.json"
+    cap_cache: dict = {}
+    if cap_cache_path.exists():
+        try:
+            cap_cache = json.loads(cap_cache_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    print(_separator("REQUIRED CAPABILITIES"))
+    required_caps = cap_cache.get("required_capabilities") or []
+    required_items = cap_cache.get("required_items") or []
+    if required_caps:
+        coverage = cap_cache.get("coverage", 0.0)
+        print(f"  coverage: {coverage:.2f}   "
+              f"({len(required_caps)} capabilities → {len(required_items)} item types)")
+        for cap in required_caps[:10]:
+            cap_id = cap.get("capability_id", "?")
+            items = ", ".join(cap.get("satisfied_by_items", [])) or "—"
+            src = cap.get("source", "deterministic")
+            print(f"  • {cap_id}  →  {items}   [{src}]")
+        if required_items:
+            print(f"  required items: {', '.join(required_items)}")
+        if cap_cache.get("needs_llm_augmentation"):
+            print("  🟡 coverage below threshold — capability mapper recommends LLM augmentation")
+    else:
+        print("  — capability mapper cache not available —")
     print()
 
 

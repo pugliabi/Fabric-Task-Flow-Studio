@@ -60,6 +60,10 @@ def extract_task_flow(content: str) -> str | None:
     Searches YAML frontmatter first (``task_flow:`` or ``task-flow:`` or
     ``taskflow:``), then falls back to body patterns like
     ``**Task Flow:** value``.  Returns the lowercased value or ``None``.
+
+    Body-level fallbacks intentionally skip fenced code blocks so that
+    example snippets (``task_flow: foo`` inside ```` ```yaml ... ``` ````)
+    cannot steal the value from a real, top-level declaration.
     """
     # 1. Try YAML frontmatter (--- ... ---)
     fm = FRONTMATTER_RE.match(content)
@@ -68,13 +72,17 @@ def extract_task_flow(content: str) -> str | None:
         if m:
             return m.group(1).strip().strip('"').strip("'").lower()
 
-    # 2. Try body: task_flow/task-flow/taskflow key anywhere in content
-    m = re.search(r'(?:task[-_]?flow)\s*:\s*(\S+)', content, re.IGNORECASE)
+    # Strip fenced code blocks so example YAML inside them cannot win the
+    # body-level fallbacks below.
+    body = re.sub(r"```.*?```", "", content, flags=re.DOTALL)
+
+    # 2. Try body: task_flow/task-flow/taskflow key anywhere in (non-code) content
+    m = re.search(r'(?:task[-_]?flow)\s*:\s*(\S+)', body, re.IGNORECASE)
     if m:
         return m.group(1).strip().strip('"').strip("'").lower()
 
     # 3. Fallback: **Task Flow:** value pattern
-    m = re.search(r'\*\*Task\s+[Ff]low:\*\*\s*(\S+)', content)
+    m = re.search(r'\*\*Task\s+[Ff]low:\*\*\s*(\S+)', body)
     if m:
         val = m.group(1).strip().lower()
         # Take first word (might have extra description after)
@@ -82,7 +90,7 @@ def extract_task_flow(content: str) -> str | None:
         return val if val else None
 
     # 4. Fallback: "Task Flow: `value`" or "Task Flow: value" in body
-    m = re.search(r'Task\s+Flow\s*:\s*`?(\S+?)`?(?:\s|$)', content)
+    m = re.search(r'Task\s+Flow\s*:\s*`?(\S+?)`?(?:\s|$)', body)
     if m:
         return m.group(1).strip().lower()
 
@@ -363,6 +371,14 @@ def _parse_list(lines: list[str], start: int, base_indent: int,
 
         value_part = stripped[2:].strip()
 
+        # Inline mapping item: ``- { key: value, ... }``. Without this
+        # branch the generic ``key: value`` parser below mis-tokenises the
+        # whole brace expression as a single key.
+        if value_part.startswith("{") and value_part.endswith("}"):
+            target.append(parse_inline_mapping(value_part))
+            i += 1
+            continue
+
         if ":" in value_part and not value_part.startswith('"'):
             # List of mappings: ``- key: value``
             child: dict[str, Any] = {}
@@ -459,3 +475,50 @@ def _parse_mapping(lines: list[str], start: int, base_indent: int,
                 i = _parse_mapping(lines, next_i, next_indent, child)
                 target[key] = child
     return i
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Safe YAML emission helpers
+#
+# These exist so scripts that previously hand-rolled YAML emission (e.g.
+# pipeline_precompute, handoff-scaffolder, test-plan-prefill) can produce
+# output that round-trips cleanly through ``parse_yaml`` above. Without
+# these, names containing spaces / colons / quotes silently break the
+# downstream parser.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_BARE_SCALAR_RE = re.compile(r"^[A-Za-z0-9_\-./]+$")
+_RESERVED_WORDS = frozenset({
+    "true", "false", "null", "yes", "no", "on", "off", "~", "",
+})
+
+
+def dump_scalar(value: Any) -> str:
+    """Render a Python value as a single-line YAML scalar.
+
+    Strings are double-quoted when they contain anything that could be
+    misparsed (colons, quotes, leading dashes, etc.) so the result is
+    safe to drop into hand-rolled YAML output without corrupting it.
+    """
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    text = str(value)
+    if (text
+            and _BARE_SCALAR_RE.match(text)
+            and text.lower() not in _RESERVED_WORDS
+            and not text[0].isdigit()):
+        return text
+    # Use JSON string escaping — strict superset of YAML double-quote rules
+    # we actually rely on (\\, \", \n, \r, \t, control chars). Avoids the
+    # subtle bugs of hand-rolled escaping.
+    import json as _json
+    return _json.dumps(text, ensure_ascii=False)
+
+
+def dump_inline_list(values: list[Any]) -> str:
+    """Render a list as an inline YAML flow sequence: ``[a, "b c", d]``."""
+    return "[" + ", ".join(dump_scalar(v) for v in values) + "]"

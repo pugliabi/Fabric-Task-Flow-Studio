@@ -35,6 +35,34 @@ python _shared/scripts/run-pipeline.py start "Project Name" --problem "problem s
 
 The `start` command runs `signal-mapper.py` as pre-compute — review its output above. Do NOT run `signal-mapper.py` again manually.
 
+### Step 2b: Run the Semantic Capability Mapper
+
+The lexical signal mapper handles vocabulary; the capability mapper handles **intent → required Fabric items**. It catches what users mean even when they don't use the literal keywords (e.g., "mountain of data to put in data scientists' hands" → Notebook + Lakehouse).
+
+```bash
+python .github/skills/fabric-discover/scripts/capability-mapper.py \
+  --project <project> \
+  --text-file _projects/<project>/.problem-statement.txt \
+  --emit-prompt-bundle \
+  --format json
+```
+
+**Exit code handling:**
+
+- **Exit 0** — deterministic coverage met. Output already includes `required_capabilities` and `required_items`. Move to Step 3.
+- **Exit 2** — coverage below threshold. The script wrote `_projects/<project>/docs/.capability-llm-prompt.json` containing the problem text + candidate intents. You (the agent) MUST:
+  1. Read the prompt bundle.
+  2. For each `candidate_intents[*]`, decide if the problem text actually expresses that intent. Be conservative — only return high/medium-confidence intents and cite a short quote in `rationale`.
+  3. Persist the response:
+     ```bash
+     python .github/skills/fabric-discover/scripts/capability-writer.py \
+       --project <project> --response-file <path-to-your-json>
+     ```
+     (Or `--response-json '{...}'` for inline.)
+  4. Re-run `capability-mapper.py` (omit `--emit-prompt-bundle`) — it now merges your LLM intents with deterministic ones and exits 0.
+
+The output is cached at `_projects/<project>/docs/.capability-llm-cache.json` keyed by `(problem_hash, registry_version)` — same inputs produce the same merged result indefinitely.
+
 ### Step 3: Close 4 V's Gaps (loop until confidence floor met)
 
 For each V **not already stated in the problem statement**, ask the user one at a time via `ask_user`. Do NOT proceed to Step 4 with any V still unknown.

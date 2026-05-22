@@ -661,7 +661,7 @@ class TestPrecomputeSignalMapper:
         captured_cmds = []
         import subprocess as _sp
 
-        original_run = _sp.run
+        original_run = _sp.run  # noqa: F841 — captured for parity with monkeypatch test pattern
 
         def fake_run(cmd, **kwargs):
             captured_cmds.append(cmd)
@@ -670,8 +670,13 @@ class TestPrecomputeSignalMapper:
 
         monkeypatch.setattr(_sp, "run", fake_run)
         rp._run_precompute("0a-discovery", "test-proj", state)
-        assert len(captured_cmds) == 1, "Expected signal mapper to be called"
+        # Now 2 calls: signal-mapper + capability-mapper
+        assert len(captured_cmds) == 2, (
+            f"Expected signal mapper + capability mapper, got {len(captured_cmds)}"
+        )
+        # First call must be signal-mapper with the right --project
         cmd = captured_cmds[0]
+        assert any("signal-mapper" in str(p) for p in cmd), "first cmd not signal-mapper"
         assert "--project" in cmd, f"--project missing from cmd: {cmd}"
         proj_idx = cmd.index("--project")
         assert cmd[proj_idx + 1] == "test-proj", f"Wrong project value: {cmd[proj_idx + 1]}"
@@ -734,7 +739,7 @@ class TestPrecomputeFilesystemPath:
             return type("Result", (), {"returncode": 0, "stdout": "prefill output", "stderr": ""})()
 
         monkeypatch.setattr(_sp, "run", fake_run)
-        outputs = rp._run_precompute("2a-test-plan", "test-proj", state)
+        rp._run_precompute("2a-test-plan", "test-proj", state)
         assert len(captured_cmds) == 1, "Test plan prefill should be called when handoff exists"
         # Verify the handoff path passed to the script points to _projects/
         cmd = captured_cmds[0]
@@ -1078,8 +1083,7 @@ class TestScaffolderTemplateAlignment:
 
     def _get_scaffold_output(self):
         """Get scaffold output using subprocess to avoid module import issues."""
-        import subprocess
-        cmd = [
+        cmd = [  # noqa: F841 — kept as documentation of the alternative subprocess approach
             sys.executable, "-c",
             "import sys; sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent.parent.parent / '_shared' / 'lib')); "
             "from handoff_scaffolder import scaffold; "
@@ -1126,7 +1130,7 @@ class TestDesignPrecompute:
             return type("Result", (), {"returncode": 0, "stdout": "resolved", "stderr": ""})()
 
         monkeypatch.setattr(_sp, "run", fake_run)
-        outputs = rp._run_precompute("1-design", "test-proj", state)
+        rp._run_precompute("1-design", "test-proj", state)
         resolver_calls = [c for c in calls if "decision-resolver" in str(c)]
         assert len(resolver_calls) >= 1, "decision-resolver should run during design precompute"
 
@@ -1151,7 +1155,7 @@ class TestDesignPrecompute:
             return type("Result", (), {"returncode": 0, "stdout": "scaffolded", "stderr": ""})()
 
         monkeypatch.setattr(_sp, "run", fake_run)
-        outputs = rp._run_precompute("1-design", "test-proj", state)
+        rp._run_precompute("1-design", "test-proj", state)
         scaffolder_calls = [c for c in calls if "handoff-scaffolder" in str(c)]
         assert len(scaffolder_calls) >= 1, "handoff-scaffolder should run during design precompute"
         # Verify it passed the high-confidence candidate
@@ -1171,7 +1175,7 @@ class TestDesignPrecompute:
             return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
         monkeypatch.setattr(_sp, "run", fake_run)
-        outputs = rp._run_precompute("1-design", "test-proj", state)
+        rp._run_precompute("1-design", "test-proj", state)
         assert call_count[0] == 0
 
 
@@ -1930,4 +1934,5 @@ class TestPrecomputeSignalMapperCacheHit:
 
         monkeypatch.setattr(_sp, "run", fake_run)
         rp._run_precompute("0a-discovery", "cache-miss", state)
-        assert called["n"] == 1
+        # signal-mapper (cache miss) + capability-mapper (always runs)
+        assert called["n"] == 2

@@ -128,6 +128,19 @@ def pipeline_state(project: str) -> str:
 def scaffold(repo_root: str, display_name: str, task_flow: str | None = None):
     repo_root_path = REPO_ROOT if not repo_root else Path(repo_root)
     project = sanitize_name(display_name)
+
+    # Guard against names that are empty (or sanitize to empty) — otherwise
+    # `_projects/` itself would be treated as the project directory.
+    if not display_name or not display_name.strip():
+        print("❌ Project display name cannot be empty.")
+        sys.exit(1)
+    if not project:
+        print(
+            f"❌ Project name '{display_name}' contains no alphanumeric characters; "
+            "cannot derive a folder slug."
+        )
+        sys.exit(1)
+
     project_dir = repo_root_path / "_projects" / project
 
     if project_dir.exists():
@@ -136,7 +149,7 @@ def scaffold(repo_root: str, display_name: str, task_flow: str | None = None):
         sys.exit(1)
 
     print(f"🏗️  Scaffolding project: {display_name}")
-    print(f"   Folder: projects/{project}/")
+    print(f"   Folder: _projects/{project}/")
     print()
 
     for directory in (project_dir / "docs", project_dir / "deploy"):

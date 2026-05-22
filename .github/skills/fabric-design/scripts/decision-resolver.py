@@ -43,7 +43,15 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
+
+# Use the shared YAML helpers so signals files round-trip cleanly with the
+# rest of the pipeline (handoff-scaffolder, signal-mapper, etc.). The old
+# hand-rolled parser silently dropped quoted strings that contained colons
+# and mis-parsed booleans/floats — a real source of resolver bugs.
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "_shared" / "lib"))
+from yaml_utils import parse_yaml as _shared_parse_yaml, parse_yaml_value as _shared_parse_yaml_value
 
 Confidence = Literal["high", "default", "ambiguous", "na"]
 
@@ -740,23 +748,36 @@ def _to_json(result: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def _load_yaml_signals(path: str) -> dict:
-    """Load a flat key: value YAML file without requiring PyYAML."""
+    """Load signals from JSON or flat ``key: value`` YAML.
+
+    Delegates to the shared YAML parser so quoted strings, booleans, numerics
+    and inline lists behave identically to the rest of the pipeline. Falls
+    back to JSON if the file looks like JSON (legacy callers).
+    """
+    text = Path(path).read_text(encoding="utf-8")
+    stripped = text.lstrip()
+    if stripped.startswith("{"):
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass  # fall through to YAML parsing
+
+    # Try the full shared parser first. It produces typed values and handles
+    # nested mappings cleanly. Fall back to flat key:value parsing only when
+    # the shared parser returns an empty dict (e.g. truly flat files).
+    parsed = _shared_parse_yaml(text)
+    if parsed:
+        return parsed
+
     signals: dict = {}
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if ":" not in line:
-                continue
-            key, _, value = line.partition(":")
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            if value.lower() == "null" or value == "":
-                value = None
-            elif value.isdigit():
-                value = int(value)
-            signals[key] = value
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        signals[key.strip()] = _shared_parse_yaml_value(value)
     return signals
 
 
@@ -987,6 +1008,87 @@ def _extract_signals_from_brief(path: str) -> dict:
 # CLI
 # ---------------------------------------------------------------------------
 
+def enrich_signals_with_capabilities(
+    signals: dict,
+    capabilities: list[str],
+) -> dict:
+    """Project required-capability ids into the signals dict.
+
+    Capability mapper output is additive — it never overrides signals already
+    present from the discovery brief. Capabilities that imply contradictory
+    signals (e.g., streaming-ingest on a batch-stated brief) are recorded as
+    ``velocity=both``.
+
+    Capability → signal mapping:
+        python-ml-runtime           → skillset=code-first, use_case+=ml
+        historical-medallion-store  → use_case+=analytics
+        conversational-query        → use_case+=conversational-ai
+        low-latency-event-store     → velocity=real-time (or both)
+        streaming-ingest            → velocity=real-time (or both)
+        alerting-trigger            → use_case+=alerts
+        mobile-field-intake         → data_pattern=mixed
+        low-code-ingest             → skillset=low-code (only if unset)
+        semantic-self-service       → interactivity=interactive
+    """
+    out = dict(signals)
+    caps = set(capabilities or [])
+
+    def _add_use_case(token: str) -> None:
+        existing = (out.get("use_case") or "").strip()
+        if token in existing.split("+"):
+            return
+        out["use_case"] = (existing + "+" + token).lstrip("+") if existing else token
+
+    def _set_velocity(target: str) -> None:
+        cur = (out.get("velocity") or "").lower()
+        if not cur:
+            out["velocity"] = target
+        elif cur in ("batch", "scheduled") and target == "real-time":
+            out["velocity"] = "both"
+        # If already real-time/both, leave it alone.
+
+    if "python-ml-runtime" in caps:
+        # Code-first is the canonical skillset for ML notebooks; only enrich
+        # if the brief did not explicitly say low-code.
+        if not out.get("skillset"):
+            out["skillset"] = "code-first"
+        _add_use_case("ml")
+
+    if "historical-medallion-store" in caps:
+        _add_use_case("analytics")
+
+    if "conversational-query" in caps:
+        _add_use_case("conversational-ai")
+
+    if "low-latency-event-store" in caps or "streaming-ingest" in caps:
+        _set_velocity("real-time")
+
+    if "alerting-trigger" in caps:
+        _add_use_case("alerts")
+
+    if "mobile-field-intake" in caps and not out.get("data_pattern"):
+        out["data_pattern"] = "mixed"
+
+    if "low-code-ingest" in caps and not out.get("skillset"):
+        out["skillset"] = "low-code"
+
+    if "semantic-self-service" in caps and not out.get("interactivity"):
+        out["interactivity"] = "interactive"
+
+    return out
+
+
+def _load_capability_cache(path: str) -> list[str]:
+    """Read required_capabilities[] ids from a capability mapper cache file."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return []
+    return [c.get("capability_id") for c in data.get("required_capabilities", [])
+            if c.get("capability_id")]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Deterministic decision resolver for Fabric task-flow architectures"
@@ -1002,6 +1104,9 @@ def main() -> None:
                         help="Output format (default: json)")
     parser.add_argument("--task-flow", type=str, default=None,
                         help="Task flow name (e.g., medallion) for default fallbacks")
+    parser.add_argument("--capability-cache", type=str, default=None,
+                        help="Path to .capability-mapper-cache.json — required "
+                             "capabilities are projected into signals before resolving")
     parser.add_argument("--verbose", action="store_true",
                         help="Print rule evaluation trace to stderr")
     args = parser.parse_args()
@@ -1030,6 +1135,13 @@ def main() -> None:
         except Exception as e:
             print(f"Error reading discovery brief: {e}", file=sys.stderr)
             sys.exit(2)
+
+    # Project capability mapper output (if provided) into signals so the
+    # resolver picks the right items (e.g., python-ml-runtime forces ML branch).
+    if args.capability_cache:
+        caps = _load_capability_cache(args.capability_cache)
+        if caps:
+            signals = enrich_signals_with_capabilities(signals, caps)
 
     result = resolve_all(signals, task_flow=args.task_flow)
 

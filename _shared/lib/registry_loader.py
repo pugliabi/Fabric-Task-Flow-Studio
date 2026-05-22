@@ -13,8 +13,6 @@ Usage::
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 from typing import Any, Callable
 
 from paths import REPO_ROOT, REGISTRY_DIR
@@ -38,10 +36,17 @@ def load_registry() -> dict[str, dict]:
     The result is cached after the first successful call so repeated imports
     across scripts share a single in-memory copy.
 
+    The cached value is a *deep copy* derived from the on-disk JSON — the
+    cache is never mutated in place. Callers receive the cached dict and
+    must treat it as read-only; mutations will leak to other callers but
+    won't corrupt the validation invariants the loader enforces.
+
     Raises:
         FileNotFoundError: Registry JSON file does not exist.
         ValueError: JSON is malformed or missing the ``types`` key.
     """
+    import copy
+
     global _cache
     if _cache is None:
         data = _read_registry_file()
@@ -50,7 +55,12 @@ def load_registry() -> dict[str, dict]:
                 f"Registry at {REGISTRY_PATH} is missing a valid 'types' dict"
             )
         defaults = data.get("$defaults", {})
-        types = data["types"]
+        phase_legend = data.get("$phase", {})
+        phase_keys = list(phase_legend.keys())
+        # Work on a deep copy so the on-disk JSON shape is preserved for
+        # validate_registry() and any other consumer that needs to inspect
+        # the raw declaration (e.g. to detect missing fields).
+        types = copy.deepcopy(data["types"])
         for name, item in types.items():
             # Apply availability default
             if "availability" not in item and "availability" in defaults:
@@ -90,8 +100,6 @@ def load_registry() -> dict[str, dict]:
                         item["rest_api"]["api_name"] = item.pop("api_name")
             # Derive phase_order from $phase legend position (v1.0.0)
             if "phase_order" not in item:
-                phase_legend = data.get("$phase", {})
-                phase_keys = list(phase_legend.keys())
                 phase_name = item.get("phase", "")
                 if phase_name in phase_keys:
                     item["phase_order"] = phase_keys.index(phase_name) + 1
@@ -417,6 +425,15 @@ def validate_registry() -> list[str]:
     }
 
     for name, data in registry.items():
+        # Guard against type confusion: a corrupted registry entry could be
+        # a string, list, or null rather than a dict. Report and skip so
+        # downstream checks don't crash with AttributeError.
+        if not isinstance(data, dict):
+            errors.append(
+                f"{name}: expected object, got {type(data).__name__}"
+            )
+            continue
+
         # Check required fields
         missing = _REQUIRED_FIELDS - set(data.keys())
         if missing:
@@ -433,9 +450,20 @@ def validate_registry() -> list[str]:
             errors.append(f"{name}: invalid task_type '{task_type}'")
 
         # Check aliases are lowercase
-        for alias in data.get("aliases", []):
-            if alias != alias.lower():
-                errors.append(f"{name}: alias '{alias}' is not lowercase")
+        aliases = data.get("aliases", [])
+        if not isinstance(aliases, list):
+            errors.append(
+                f"{name}: aliases must be a list, got {type(aliases).__name__}"
+            )
+        else:
+            for alias in aliases:
+                if not isinstance(alias, str):
+                    errors.append(
+                        f"{name}: alias entries must be strings, got {type(alias).__name__}"
+                    )
+                    continue
+                if alias != alias.lower():
+                    errors.append(f"{name}: alias '{alias}' is not lowercase")
 
         # Check fab_type is present and non-empty
         if not data.get("fab_type"):
@@ -466,6 +494,108 @@ def load_stop_words() -> frozenset[str]:
             data = json.load(f)
         _stop_words_cache = frozenset(data.get("words", []))
     return _stop_words_cache
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Capability registry loader
+# ─────────────────────────────────────────────────────────────────────────────
+
+_capability_registry_cache: dict | None = None
+_CAPABILITY_REGISTRY_PATH = REGISTRY_DIR / "capability-registry.json"
+
+
+def load_capability_registry() -> dict:
+    """Load the semantic capability registry from registry/capability-registry.json.
+
+    The registry has three sections:
+      - intents[]       — semantic patterns extracted from problem text
+      - capabilities[]  — named abilities required to satisfy intents
+      - (capabilities reference Fabric item types from item-type-registry.json)
+
+    Validates on load:
+      - every intent's `requires_capabilities` references a real capability id
+      - every capability's `satisfied_by_items` references a real Fabric item
+        type key in item-type-registry.json
+
+    Returns the full registry dict (cached after first successful load).
+
+    Raises:
+        FileNotFoundError: Registry file missing.
+        ValueError: Schema invalid or cross-references broken.
+    """
+    global _capability_registry_cache
+    if _capability_registry_cache is not None:
+        return _capability_registry_cache
+
+    if not _CAPABILITY_REGISTRY_PATH.exists():
+        raise FileNotFoundError(
+            f"Capability registry not found at {_CAPABILITY_REGISTRY_PATH}"
+        )
+
+    with open(_CAPABILITY_REGISTRY_PATH, encoding="utf-8") as f:
+        data = json.load(f)
+
+    errors = _validate_capability_registry(data)
+    if errors:
+        raise ValueError(
+            "Capability registry validation failed:\n  - "
+            + "\n  - ".join(errors)
+        )
+
+    _capability_registry_cache = data
+    return _capability_registry_cache
+
+
+def _validate_capability_registry(data: dict) -> list[str]:
+    """Return a list of error messages; empty list = valid."""
+    errors: list[str] = []
+
+    for key in ("intents", "capabilities"):
+        if key not in data or not isinstance(data[key], list):
+            errors.append(f"Missing or non-list section '{key}'")
+            return errors  # cannot continue without these
+
+    intent_ids = [i.get("id") for i in data["intents"]]
+    if len(intent_ids) != len(set(intent_ids)):
+        dups = [i for i in intent_ids if intent_ids.count(i) > 1]
+        errors.append(f"Duplicate intent ids: {sorted(set(dups))}")
+
+    capability_ids = [c.get("id") for c in data["capabilities"]]
+    if len(capability_ids) != len(set(capability_ids)):
+        dups = [c for c in capability_ids if capability_ids.count(c) > 1]
+        errors.append(f"Duplicate capability ids: {sorted(set(dups))}")
+
+    capability_id_set = set(capability_ids)
+    for intent in data["intents"]:
+        for cap_ref in intent.get("requires_capabilities", []):
+            if cap_ref not in capability_id_set:
+                errors.append(
+                    f"Intent '{intent.get('id')}' requires unknown capability "
+                    f"'{cap_ref}'"
+                )
+
+    try:
+        item_registry = load_registry()
+        item_keys = set(item_registry.keys())
+    except Exception as exc:  # pragma: no cover — defensive
+        errors.append(f"Could not load item-type-registry for cross-check: {exc}")
+        return errors
+
+    for cap in data["capabilities"]:
+        for item_ref in cap.get("satisfied_by_items", []):
+            if item_ref not in item_keys:
+                errors.append(
+                    f"Capability '{cap.get('id')}' references unknown Fabric "
+                    f"item type '{item_ref}' (not in item-type-registry.json)"
+                )
+        for item_ref in cap.get("supporting_items", []):
+            if item_ref not in item_keys:
+                errors.append(
+                    f"Capability '{cap.get('id')}' supporting_items references "
+                    f"unknown Fabric item type '{item_ref}'"
+                )
+
+    return errors
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -527,11 +657,20 @@ def _compute_waves(items: list[dict]) -> list[dict]:
             for i, name in enumerate(names):
                 order_map[name] = f"{wave}{chr(97 + i)}"  # 1a, 1b, 1c...
 
-    # Inject computed order into items
+    # Inject computed order into items. Items still missing from order_map
+    # are unreachable from any root — i.e. there is a dependency cycle. Raise
+    # rather than silently emitting order="0" because a silent fallback
+    # produces an invalid deployment plan downstream.
+    unresolved = [item["itemType"] for item in items if item["itemType"] not in order_map]
+    if unresolved:
+        raise ValueError(
+            f"deployment-order: cannot compute waves for {unresolved!r} — "
+            f"likely a circular dependsOn cycle or unresolved external dependency."
+        )
     result = []
     for item in items:
         enriched = dict(item)
-        enriched["order"] = order_map.get(item["itemType"], "0")
+        enriched["order"] = order_map[item["itemType"]]
         result.append(enriched)
     return result
 

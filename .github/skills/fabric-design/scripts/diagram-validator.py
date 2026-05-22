@@ -60,7 +60,7 @@ def validate_diagram(
         fid += 1
         count = len(over_width)
         findings.append({
-            "id": f"DV-{fid}", "severity": "yellow",
+            "id": f"DV-{fid}", "severity": "red",
             "message": f"{count} line(s) exceed {max_width} chars (max: {max_line_width})"
         })
 
@@ -73,30 +73,37 @@ def validate_diagram(
     box_opens = top_left
     box_closes = bot_right
 
+    # Imbalanced box corners indicate a structurally broken diagram. Treat as
+    # red (fatal) — a malformed ASCII box renders as garbage downstream.
     if top_left != bot_right:
         fid += 1
         findings.append({
-            "id": f"DV-{fid}", "severity": "yellow",
+            "id": f"DV-{fid}", "severity": "red",
             "message": f"Unbalanced box corners: ┌={top_left} vs ┘={bot_right}"
         })
     if top_right != bot_left:
         fid += 1
         findings.append({
-            "id": f"DV-{fid}", "severity": "yellow",
+            "id": f"DV-{fid}", "severity": "red",
             "message": f"Unbalanced box corners: ┐={top_right} vs └={bot_left}"
         })
     if top_left != top_right:
         fid += 1
         findings.append({
-            "id": f"DV-{fid}", "severity": "yellow",
+            "id": f"DV-{fid}", "severity": "red",
             "message": f"Unbalanced top corners: ┌={top_left} vs ┐={top_right}"
         })
 
     # --- Item name coverage ---
     if expected_items:
-        diagram_lower = diagram.lower()
-        missing = [name for name in expected_items
-                   if name.lower() not in diagram_lower]
+        # Whole-word, case-insensitive: avoids spurious substring matches
+        # (e.g. "pipeline" matching inside "DataPipeline").
+        import re as _re
+        missing = []
+        for name in expected_items:
+            pattern = rf"(?<![\w-]){_re.escape(name)}(?![\w-])"
+            if not _re.search(pattern, diagram, _re.IGNORECASE):
+                missing.append(name)
         if missing:
             fid += 1
             findings.append({

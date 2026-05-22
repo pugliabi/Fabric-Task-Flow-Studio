@@ -3,7 +3,6 @@
 import importlib
 import importlib.util
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -187,6 +186,21 @@ class TestScaffold:
 
         with pytest.raises(SystemExit):
             np.scaffold(str(tmp_path), "Dup Proj")
+
+    def test_empty_display_name_exits(self, tmp_path):
+        """scaffold should sys.exit(1) for an empty display name."""
+        with pytest.raises(SystemExit):
+            np.scaffold(str(tmp_path), "")
+
+    def test_whitespace_display_name_exits(self, tmp_path):
+        """scaffold should sys.exit(1) for a whitespace-only display name."""
+        with pytest.raises(SystemExit):
+            np.scaffold(str(tmp_path), "   ")
+
+    def test_display_name_with_no_alphanumerics_exits(self, tmp_path):
+        """scaffold should sys.exit(1) when the name sanitizes to an empty slug."""
+        with pytest.raises(SystemExit):
+            np.scaffold(str(tmp_path), "!!!")
 
     def test_pipeline_state_content(self, tmp_path):
         np.scaffold(str(tmp_path), "Status Demo")

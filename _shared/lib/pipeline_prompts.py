@@ -13,23 +13,55 @@ from pipeline_state import (
     _runtime_callable,
 )
 
+# Maximum length for user-supplied strings embedded into agent prompts.
+# Prevents a long problem statement from drowning out the instructional
+# framing around it.
+_MAX_USER_FIELD_LEN = 2000
+
+# Control characters except common whitespace (\n, \r, \t). These have no
+# legitimate place in a problem statement / display name and have been used
+# to smuggle text past human review in prompt-injection attacks.
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _sanitize_user_field(value: object, *, max_len: int = _MAX_USER_FIELD_LEN) -> str:
+    """Sanitize a user-supplied string before embedding in an agent prompt.
+
+    - Coerce to str.
+    - Strip ASCII control characters (keep \\n, \\r, \\t).
+    - Truncate to ``max_len`` with an explicit ellipsis marker so the agent
+      knows content was cut.
+    - Leave Markdown / quoting intact; prompts are presented to LLM agents,
+      not rendered HTML, so HTML escaping would be misleading.
+    """
+    if value is None:
+        return ""
+    text = str(value)
+    text = _CONTROL_CHAR_RE.sub("", text)
+    if len(text) > max_len:
+        text = text[:max_len] + "… [truncated]"
+    return text
+
 
 
 def _project_path(project: str) -> str:
-    return f"projects/{project}"
+    return f"_projects/{project}"
 
 
 
 def _prompt_for_phase(phase: str, project: str, state: dict) -> str:
     pp = _project_path(project)
-    task_flow = state.get("task_flow") or "TBD"
-    display_name = state.get("display_name", project)
+    task_flow = _sanitize_user_field(state.get("task_flow") or "TBD", max_len=200)
+    display_name = _sanitize_user_field(state.get("display_name", project), max_len=200)
+    problem_statement = _sanitize_user_field(
+        state.get("problem_statement", "(see conversation history)")
+    )
 
     prompts = {
         "0a-discovery": (
             f"Use the /fabric-discover skill.\n\n"
             f"Project: {display_name} (folder: {pp})\n"
-            f"Problem statement from user: {state.get('problem_statement', '(see conversation history)')}\n\n"
+            f"Problem statement from user: {problem_statement}\n\n"
             f"The project is already scaffolded at {pp}/. Edit the pre-existing files — do NOT create new ones.\n\n"
             f"1. Infer architectural signals from the problem statement\n"
             f"2. Present inferences to confirm (the user has already described the problem — infer what you can)\n"
@@ -147,7 +179,7 @@ def _prompt_for_phase(phase: str, project: str, state: dict) -> str:
             f"   - discovery-brief.md, architecture-handoff.md, deployment-handoff.md, test-plan.md, validation-report.md\n"
             f"2. Synthesize into ONE file: {pp}/docs/project-brief.md\n"
             f"3. Do NOT create separate README.md, architecture.md, deployment-log.md, or decisions/*.md files"
-            + (f"\n4. In the 'How to Deploy' section, note that artifacts are ready but deployment is pending"
+            + ("\n4. In the 'How to Deploy' section, note that artifacts are ready but deployment is pending"
                if state.get("deploy_mode") != "live" else "")
         ),
     }

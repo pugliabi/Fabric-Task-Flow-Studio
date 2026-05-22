@@ -259,7 +259,10 @@ class TestEmitYaml:
 
     def test_contains_project(self):
         yaml = _emit_yaml(self._sample_data())
-        assert 'project: "Test"' in yaml
+        # "Test" is a safe bare scalar under yaml_utils.dump_scalar, so it
+        # round-trips without quoting. The old hand-rolled emitter always
+        # double-quoted, which corrupted strings containing internal quotes.
+        assert "project: Test" in yaml
 
     def test_contains_criteria_mapping(self):
         yaml = _emit_yaml(self._sample_data())
@@ -321,6 +324,9 @@ class TestPrefill:
         result = prefill(str(handoff))
         assert result["scan_type"] == "automated"
 
-    def test_nonexistent_file_exits(self, tmp_path):
-        with pytest.raises(SystemExit):
+    def test_nonexistent_file_raises(self, tmp_path):
+        # ``prefill`` is a library entry point and must raise a typed
+        # exception so callers (run-pipeline, pipeline_precompute, tests)
+        # can handle missing inputs without intercepting ``SystemExit``.
+        with pytest.raises(FileNotFoundError):
             prefill(str(tmp_path / "nonexistent.md"))

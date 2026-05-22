@@ -399,6 +399,28 @@ def check_registry_references(dc: DriftChecker):
         for a in v.get("aliases", []):
             all_known_names.add(a.lower())
 
+    # Build the list of recognizable item-type tokens straight from the
+    # registry instead of a hand-maintained regex. The previous hardcoded
+    # alternation drifted from the registry whenever new item types were
+    # added (e.g. ``CopyJob`` was added to the regex retroactively after a
+    # silent drift miss). Sort by length so longer names match first and
+    # ``SemanticModel`` doesn't lose to ``Model``.
+    item_type_tokens = sorted(
+        {
+            tok
+            for tok in (
+                {k for k in items.keys()}
+                | {v.get("fab_type", k) for k, v in items.items()}
+                | {v.get("display_name", k) for k, v in items.items()}
+            )
+            if tok and re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", tok)
+        },
+        key=lambda s: (-len(s), s),
+    )
+    item_type_pattern = re.compile(
+        r"\b(" + "|".join(re.escape(t) for t in item_type_tokens) + r")\b"
+    ) if item_type_tokens else None
+
     # Check diagrams reference known item types (deployment order tables only)
     for diagram_path in sorted(DIAGRAMS_DIR.glob("*.md")):
         if diagram_path.name == "_index.md":
@@ -408,22 +430,29 @@ def check_registry_references(dc: DriftChecker):
         for line in content.splitlines():
             if line.strip().startswith("```"):
                 in_code_block = not in_code_block
+                continue
             # Only scan inside code blocks (deployment order tables use box-drawing chars)
             if not in_code_block:
                 continue
-            if ("│" in line or line.startswith("|")) and "Lakehouse" not in line and "Wave" not in line:
-                # Extract item types from table cells
-                for m in re.finditer(r"\b(Lakehouse|Warehouse|Eventhouse|Notebook|Pipeline|"
-                                     r"SemanticModel|Report|Eventstream|KQLDatabase|"
-                                     r"SQLDatabase|SQLEndpoint|Environment|SparkJobDefinition|"
-                                     r"MLModel|MLExperiment|Activator|DataPipeline|"
-                                     r"MirroredDatabase|CopyJob|DataflowGen2)\b", line):
-                    item_type = m.group(1)
-                    dc.check(
-                        f"{diagram_path.stem}: {item_type} in registry",
-                        item_type.lower() in all_known_names,
-                        f"{item_type} referenced in {diagram_path.name} but not in registry"
-                    )
+            # The previous ``"Lakehouse" not in line`` substring guard was
+            # designed to skip header rows that contained example item names,
+            # but it also silently skipped every legitimate row mentioning
+            # Lakehouse. Use a precise check: skip only when the line is a
+            # ruler/separator (only box-drawing chars + dashes).
+            stripped = line.strip()
+            if not stripped or set(stripped) <= set("│|+- ─═"):
+                continue
+            if "│" not in line and not line.startswith("|"):
+                continue
+            if item_type_pattern is None:
+                continue
+            for m in item_type_pattern.finditer(line):
+                item_type = m.group(1)
+                dc.check(
+                    f"{diagram_path.stem}: {item_type} in registry",
+                    item_type.lower() in all_known_names,
+                    f"{item_type} referenced in {diagram_path.name} but not in registry"
+                )
 
     # Registry should have version metadata
     dc.check("registry has $version field",

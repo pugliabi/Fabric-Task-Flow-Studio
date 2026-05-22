@@ -213,8 +213,17 @@ def main():
         history_entry = log_healing_history(before, after)
         content = LEARNINGS_PATH.read_text(encoding="utf-8") if LEARNINGS_PATH.exists() else ""
 
-        # Remove old Healing History section if present
-        content = re.sub(r"\n## Healing History\n.*", "", content, flags=re.DOTALL)
+        # Remove old Healing History section if present. The previous
+        # greedy regex (``.*`` with DOTALL) silently deleted every section
+        # after the Healing History block — a real risk because heal
+        # scripts run in CI and overwrite the canonical learnings file.
+        # The new pattern stops at the next ``## `` heading (or EOF).
+        content = re.sub(
+            r"\n## Healing History\n.*?(?=\n## |\Z)",
+            "",
+            content,
+            flags=re.DOTALL,
+        )
         content += history_entry
 
         LEARNINGS_PATH.write_text(content, encoding="utf-8")

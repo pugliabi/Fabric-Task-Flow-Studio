@@ -713,7 +713,6 @@ class TestNegationDetection:
     def test_negated_keyword_suppressed(self):
         """Keywords preceded by 'NOT' in the same sentence are suppressed."""
         result = sm.map_signals("We do NOT need dashboards. We want streaming.")
-        signal_names = [s["signal"] for s in result["signals"]]
         kw_lists = {
             s["signal"]: s["source_keywords"] for s in result["signals"]
         }
@@ -726,7 +725,6 @@ class TestNegationDetection:
     def test_negated_keyword_dont_suppressed(self):
         """Contraction 'don't' triggers negation."""
         result = sm.map_signals("We don't want dashboards or any bar charts.")
-        signal_names = [s["signal"] for s in result["signals"]]
         kw_lists = {
             s["signal"]: s["source_keywords"] for s in result["signals"]
         }

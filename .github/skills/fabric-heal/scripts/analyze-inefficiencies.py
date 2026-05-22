@@ -40,6 +40,23 @@ LEARNINGS_PATH = REPO_ROOT / "_shared" / "learnings.md"
 # Signal mapper stress test
 # ---------------------------------------------------------------------------
 
+def _run_capability_mapper(problem: str) -> dict | None:
+    """Run capability-mapper once against the problem, return parsed JSON or None."""
+    cmd = [sys.executable, str(SCRIPTS_DIR / "capability-mapper.py"),
+           "--intake", "--text", problem, "--format", "json"]
+    try:
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           timeout=30, encoding="utf-8", env=env)
+        # exit 0 = OK; exit 2 = LLM-needed (still useful — stdout has the JSON)
+        if r.returncode in (0, 2) and r.stdout.strip():
+            return json.loads(r.stdout)
+    except Exception:
+        pass
+    return None
+
+
 def run_signal_mapper(problem: str, runs: int) -> dict:
     """Run signal-mapper N times against the same problem and collect stats."""
     results = []
@@ -80,10 +97,14 @@ def run_signal_mapper(problem: str, runs: int) -> dict:
             findings.append(f"Signal mapper deterministic across {len(valid)} runs ✓")
 
     # Check keyword coverage
+    cap_sample = None
     if valid:
         coverage = valid[0].get("keyword_coverage", 0)
         if coverage < 0.1:
-            findings.append(f"Low keyword coverage ({coverage:.1%}) — problem statement may use terms not in signal table")
+            findings.append(
+                f"Low keyword coverage ({coverage:.1%}) — DEPRECATED METRIC. "
+                f"See capability_coverage below for the authoritative finding."
+            )
 
         # Check ambiguity
         if valid[0].get("ambiguous"):
@@ -96,7 +117,26 @@ def run_signal_mapper(problem: str, runs: int) -> dict:
         elif len(candidates) == 0:
             findings.append("No task flow candidates matched — signal table has gaps for this problem type")
 
-    return {"runs": runs, "results": len(valid), "findings": findings, "sample": valid[0] if valid else None}
+        # Capability-coverage (authoritative since ADR-0002)
+        cap_sample = _run_capability_mapper(problem)
+        if cap_sample is not None:
+            cap_cov = cap_sample.get("coverage", 0)
+            req_items = cap_sample.get("required_items", [])
+            findings.append(
+                f"Capability coverage: {cap_cov:.0%} "
+                f"({len(req_items)} required items: {', '.join(req_items) or '(none)'})"
+            )
+            if cap_cov < 0.6:
+                findings.append(
+                    "⚠ Capability coverage below 0.6 — capability mapper "
+                    "recommends LLM augmentation for this problem."
+                )
+
+    result = {"runs": runs, "results": len(valid), "findings": findings,
+              "sample": valid[0] if valid else None}
+    if cap_sample is not None:
+        result["capability_sample"] = cap_sample
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -553,15 +593,21 @@ def main():
             current = LEARNINGS_PATH.read_text(encoding="utf-8") if LEARNINGS_PATH.exists() else ""
             section_header = "## Pipeline Inefficiencies"
             if section_header in current:
-                # Remove old section entirely before appending new one
+                # Remove only the existing Pipeline Inefficiencies section,
+                # stopping at the next ``## `` heading. The previous greedy
+                # delete (``.*`` with DOTALL) wiped every section that came
+                # after the inefficiencies block — a silent learnings-loss bug.
                 current = re.sub(
-                    r"\n## Pipeline Inefficiencies\n.*",
-                    "", current, flags=re.DOTALL
+                    r"\n## Pipeline Inefficiencies\n.*?(?=\n## |\Z)",
+                    "",
+                    current,
+                    flags=re.DOTALL,
                 )
-                LEARNINGS_PATH.write_text(current, encoding="utf-8")
 
-            with open(LEARNINGS_PATH, "a", encoding="utf-8") as f:
-                f.write(new_text)
+            # Single combined write avoids a race window where another
+            # process could read the file between the truncate and the
+            # append.
+            LEARNINGS_PATH.write_text(current + new_text, encoding="utf-8")
             print(f"  ✅ Appended {len(all_findings)} findings to _shared/learnings.md")
     else:
         print("\n  No findings to report.")

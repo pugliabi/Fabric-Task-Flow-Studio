@@ -38,7 +38,13 @@ from registry_loader import (
     build_deploy_method_map,
     build_test_method_map,
 )
-from yaml_utils import extract_yaml_blocks, parse_yaml_list, parse_yaml_scalar
+from yaml_utils import (
+    dump_inline_list as _yaml_dump_inline_list,
+    dump_scalar as _yaml_dump_scalar,
+    extract_yaml_blocks,
+    parse_yaml_list,
+    parse_yaml_scalar,
+)
 from text_utils import slugify_phase
 
 PHASE_MAP: dict[str, tuple[str, int]] = build_phase_map()
@@ -199,13 +205,18 @@ def _detect_item_type(ac: dict[str, str], items: list[dict[str, str]]) -> str | 
         if found:
             return found
 
-    # Scan AC text fields for known item type names (longest match first)
+    # Scan AC text fields for known item type names (longest match first).
+    # Use word-boundary regex so short types like "Report" don't match
+    # "Reports/Reporting" or substrings of "MirroredDatabase" don't shadow
+    # "Database". The (?<![\w-]) / (?![\w-]) guards mirror the signal-mapper
+    # convention so kebab/camel variants resolve cleanly.
     text_fields = " ".join(
         ac.get(k, "") for k in ("criterion", "verify", "target", "type")
     )
     sorted_types = sorted(PHASE_MAP.keys(), key=len, reverse=True)
     for item_type in sorted_types:
-        if re.search(re.escape(item_type), text_fields, re.IGNORECASE):
+        pattern = rf"(?<![\w-]){re.escape(item_type)}(?![\w-])"
+        if re.search(pattern, text_fields, re.IGNORECASE):
             return item_type
 
     return None
@@ -362,8 +373,10 @@ def prefill(handoff_path: str) -> dict:
         handoff_file = REPO_ROOT / handoff_file
 
     if not handoff_file.exists():
-        print(f"Error: handoff not found: {handoff_file}", file=sys.stderr)
-        sys.exit(1)
+        # Library callers (pipeline_precompute, tests) need a typed
+        # exception so they can catch it cleanly. The CLI wrapper converts
+        # this back to ``sys.exit(1)`` with the original message.
+        raise FileNotFoundError(f"handoff not found: {handoff_file}")
 
     handoff_text = handoff_file.read_text(encoding="utf-8")
     parsed = _parse_handoff(handoff_text)
@@ -481,38 +494,39 @@ def prefill(handoff_path: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# YAML output (hand-rolled — no external deps)
+# YAML output (uses shared yaml_utils helpers for safe quoting)
 # ---------------------------------------------------------------------------
 
 def _emit_yaml(data: dict) -> str:
     lines: list[str] = []
+    s = _yaml_dump_scalar
 
-    lines.append(f'project: "{data["project"]}"')
-    lines.append(f'task_flow: "{data["task_flow"]}"')
-    lines.append(f'architecture_date: "{data["architecture_date"]}"')
-    lines.append(f'test_plan_date: "{data["test_plan_date"]}"')
-    lines.append(f'scan_type: {data["scan_type"]}')
+    lines.append(f"project: {s(data['project'])}")
+    lines.append(f"task_flow: {s(data['task_flow'])}")
+    lines.append(f"architecture_date: {s(data['architecture_date'])}")
+    lines.append(f"test_plan_date: {s(data['test_plan_date'])}")
+    lines.append(f"scan_type: {s(data['scan_type'])}")
     lines.append("")
 
     lines.append("criteria_mapping:")
     if data["criteria_mapping"]:
         for entry in data["criteria_mapping"]:
-            lines.append(f'  - ac_id: {entry["ac_id"]}')
-            lines.append(f'    type: {entry["type"]}')
-            lines.append(f'    phase: "{entry["phase"]}"')
-            lines.append(f'    test_method: "{entry["test_method"]}"')
+            lines.append(f"  - ac_id: {s(entry['ac_id'])}")
+            lines.append(f"    type: {s(entry['type'])}")
+            lines.append(f"    phase: {s(entry['phase'])}")
+            lines.append(f"    test_method: {s(entry['test_method'])}")
     else:
         lines.append("  []")
 
     lines.append("")
     lines.append("critical_verification:")
     for item in data["critical_verification"]:
-        lines.append(f'  - "{item}"')
+        lines.append(f"  - {s(item)}")
 
     lines.append("")
     lines.append("edge_cases:")
     for item in data["edge_cases"]:
-        lines.append(f'  - "{item}"')
+        lines.append(f"  - {s(item)}")
 
     lines.append("")
     lines.append("blockers:")
@@ -541,7 +555,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    result = prefill(args.handoff)
+    try:
+        result = prefill(args.handoff)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
     yaml_out = _emit_yaml(result)
 
     if args.output:

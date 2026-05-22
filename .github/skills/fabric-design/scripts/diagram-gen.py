@@ -61,10 +61,23 @@ _LAYER_KEY: dict[str, str] = {
 }
 
 _LAYER_TUPLE_MAP = build_layer_map()
-LAYER_MAP: dict[str, str] = {
-    k: _LAYER_KEY.get(v[0], "PROCESSING")
-    for k, v in _LAYER_TUPLE_MAP.items()
-}
+LAYER_MAP: dict[str, str] = {}
+_unmapped_layers: list[str] = []
+for _k, _v in _LAYER_TUPLE_MAP.items():
+    _layer_key = _LAYER_KEY.get(_v[0])
+    if _layer_key is None:
+        # A new layer name in the registry would silently land in
+        # PROCESSING. Track it so we can warn the operator once.
+        _unmapped_layers.append(f"{_k} → {_v[0]!r}")
+        _layer_key = "PROCESSING"
+    LAYER_MAP[_k] = _layer_key
+if _unmapped_layers:
+    import sys as _sys
+    print(
+        "⚠️  diagram-gen: unmapped layer(s) defaulting to PROCESSING: "
+        + ", ".join(sorted(set(_unmapped_layers))),
+        file=_sys.stderr,
+    )
 for _k in list(LAYER_MAP.keys()):
     LAYER_MAP.setdefault(_k.title(), LAYER_MAP[_k])
 
@@ -140,6 +153,47 @@ def generate_diagram(handoff_path: str) -> str:
         item["_wave"] = item_wave.get(item.get("name", ""), None)
         item["_layer"] = LAYER_MAP.get(item.get("type", ""), "PROCESSING")
 
+    # Build an alias → canonical-name index so depends_on entries can be matched
+    # by name, type, or display variants (e.g. "Semantic Model" → "semantic-model").
+    def _alias_keys(value: str) -> set[str]:
+        v = str(value).strip()
+        if not v:
+            return set()
+        keys = {v, v.lower(), v.replace("-", " ").lower(), v.replace("_", " ").lower()}
+        keys.add(v.replace(" ", "-").lower())
+        keys.add(v.replace(" ", "").lower())
+        return {k for k in keys if k}
+
+    alias_to_name: dict[str, str] = {}
+    for item in items_raw:
+        canonical = item.get("name", "")
+        if not canonical:
+            continue
+        for alias_source in (canonical, item.get("type", "")):
+            for key in _alias_keys(alias_source):
+                # First write wins — prefer the item that owns the alias as its
+                # name over one that only matches by type.
+                alias_to_name.setdefault(key, canonical)
+
+    # Build undirected adjacency set of (a, b) canonical-name pairs from
+    # depends_on. The renderer uses this to decide whether two boxes that share
+    # a layer should be visually connected.
+    adjacency: set[frozenset[str]] = set()
+    for item in items_raw:
+        target = item.get("name", "")
+        deps = item.get("depends_on") or []
+        if not isinstance(deps, list):
+            deps = [deps]
+        for dep in deps:
+            dep_str = str(dep).strip().strip("[]")
+            if not dep_str:
+                continue
+            for key in _alias_keys(dep_str):
+                source = alias_to_name.get(key)
+                if source and source != target:
+                    adjacency.add(frozenset({source, target}))
+                    break
+
     # Compute box width — fit within 120 char total
     max_name = max((len(i.get("name", "")) for i in items_raw), default=10)
     max_type = max((len(f"({i.get('type', '')})") for i in items_raw), default=10)
@@ -210,17 +264,28 @@ def generate_diagram(handoff_path: str) -> str:
                         curr_item = row_items[col_idx]
                         note = next_item.get("note", "")
                         curr_name = curr_item.get("name", "")
+                        next_name = next_item.get("name", "")
                         is_alt = isinstance(note, str) and "Alternative to" in note and curr_name in note
+                        is_connected = frozenset({curr_name, next_name}) in adjacency
                         if is_alt:
                             connector = "  ◄OR►  " if line_idx == 1 else "        "
-                        else:
+                        elif is_connected:
                             connector = " ── " if line_idx == 1 else "    "
+                        else:
+                            # Unrelated siblings in the same layer — render
+                            # whitespace so the diagram does not imply a flow
+                            # that the depends_on data does not declare.
+                            connector = "    "
                         row_line += cell + connector
                     else:
                         row_line += cell
                 output_lines.append(f"║ {row_line.ljust(max_content_width)} ║")
 
-        # Data-flow arrow between layers
+        # Data-flow arrow between layers. Intentionally coarse — it signals
+        # "this layer feeds the next" without claiming a specific item-to-item
+        # edge. Item-level edges are rendered intra-layer via the adjacency
+        # set above; if a future maintainer wants cross-layer item edges, the
+        # depends_on data is already available to drive it.
         if layer_idx < len(active_layers) - 1:
             arrow_pos = box_width // 2 + 2
             output_lines.append(f"║ {(' ' * arrow_pos + '│').ljust(max_content_width)} ║")
@@ -280,7 +345,16 @@ def main():
         print(diagram)
 
     if args.validate:
-        _dv = importlib.import_module("diagram-validator")
+        # diagram-validator.py lives alongside this script; Python module names
+        # cannot contain hyphens, so load it by file path.
+        import importlib.util
+        _validator_path = Path(__file__).resolve().parent / "diagram-validator.py"
+        _spec = importlib.util.spec_from_file_location("diagram_validator", _validator_path)
+        if _spec is None or _spec.loader is None:
+            print(f"❌ Could not load diagram-validator from {_validator_path}", file=sys.stderr)
+            sys.exit(2)
+        _dv = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_dv)
         validate_diagram = _dv.validate_diagram
         # Extract item names for validation
         with open(args.handoff, encoding="utf-8") as f:

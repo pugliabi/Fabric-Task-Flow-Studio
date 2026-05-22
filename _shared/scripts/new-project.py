@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from new_project import (
+# Re-export helpers so tests can monkeypatch them via this module's namespace.
+from new_project import (  # noqa: F401
     architecture_handoff,
     discovery_brief,
     pipeline_state,

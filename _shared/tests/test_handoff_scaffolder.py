@@ -326,10 +326,22 @@ class TestEmitItemsYaml:
                             fab_type="Lakehouse", wave=1,
                             dependencies=["dep1"], purpose="store")]
         yaml = _emit_items_yaml(items)
-        assert 'name: "lh"' in yaml
-        assert 'type: "Lakehouse"' in yaml
+        # Safe scalars are emitted unquoted by yaml_utils.dump_scalar — this
+        # round-trips correctly through parse_yaml and is preferred for
+        # readability. Names with spaces/colons/quotes get JSON-style quoting.
+        assert "name: lh" in yaml
+        assert "type: Lakehouse" in yaml
         assert "depends_on: [dep1]" in yaml
-        assert 'purpose: "store"' in yaml
+        assert "purpose: store" in yaml
+
+    def test_unsafe_scalar_quoted(self):
+        # Names containing spaces or colons must be quoted so the YAML
+        # round-trips. Hand-rolled quoting used to corrupt these silently.
+        items = [DeployItem(item_name="My Lakehouse: prod",
+                            item_type="Lakehouse",
+                            fab_type="Lakehouse", wave=1, purpose="store")]
+        yaml = _emit_items_yaml(items)
+        assert '"My Lakehouse: prod"' in yaml
 
     def test_alternative_note_included(self):
         items = [DeployItem(item_name="wh", item_type="Warehouse",

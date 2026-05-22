@@ -2,7 +2,6 @@
 
 import importlib.util
 import sys
-import types
 from pathlib import Path
 
 SHARED_DIR = Path(__file__).resolve().parent.parent
@@ -340,7 +339,12 @@ class TestParseHandoffMalformed:
         assert items == []
 
     def test_metadata_with_extra_whitespace(self, tmp_path):
-        content = '  project:   "Spaced"  \n  task_flow:   medallion  \n'
+        # _parse_handoff now uses the shared YAML parser, which is strict
+        # about top-level indentation (per the YAML spec). Trailing
+        # whitespace on values is still tolerated because the parser
+        # strips it; leading whitespace on top-level keys would make them
+        # non-top-level.
+        content = 'project:   "Spaced"   \ntask_flow:   medallion   \n'
         p = tmp_path / "handoff.md"
         p.write_text(content)
         project, task_flow, _, _ = _parse_handoff(str(p))

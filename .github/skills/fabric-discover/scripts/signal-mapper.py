@@ -258,8 +258,17 @@ def _build_inference_patterns() -> list[InferencePattern]:
                     weight=rule.get("weight", 1),
                     category_id=cat.id,
                 ))
-            except re.error:
-                pass  # Skip invalid patterns
+            except re.error as exc:
+                # Silently dropping invalid patterns previously hid
+                # category-coverage gaps. Log loudly so the
+                # signal-categories registry stays self-consistent.
+                import sys as _sys
+                print(
+                    f"⚠️  signal-mapper: invalid inference pattern in "
+                    f"category {cat.id} ({cat.name!r}, label={rule.get('label')!r}): "
+                    f"{exc}",
+                    file=_sys.stderr,
+                )
     return patterns
 
 
@@ -370,11 +379,21 @@ def map_signals(text: str) -> dict:
             )
 
     # ── Exclusion pass: suppress categories if exclusion patterns match ──
-    text_lower = text.lower()
+    # Use word-boundary matching so an exclusion like ``stream`` doesn't
+    # suppress legitimate hits whenever the brief uses ``upstream``,
+    # ``mainstream``, or ``streamline``. Compile patterns once per call
+    # since the exclusion list is small and varies per category.
     for cat in CATEGORIES:
         if cat.exclusions:
             for excl in cat.exclusions:
-                if excl.lower() in text_lower:
+                excl_stripped = excl.strip()
+                if not excl_stripped:
+                    continue
+                excl_pattern = re.compile(
+                    rf"(?<![\w-]){re.escape(excl_stripped)}(?![\w-])",
+                    re.IGNORECASE,
+                )
+                if excl_pattern.search(text):
                     # Clear matches for this category if exclusion found
                     results[cat.id].matches.clear()
                     break
@@ -424,7 +443,11 @@ def map_signals(text: str) -> dict:
         {"id": tf_id, "score": info["score"], "signals": info["signals"]}
         for tf_id, info in tf_scores.items()
     ]
-    candidates.sort(key=lambda c: c["score"], reverse=True)
+    # Sort by score desc; break ties on candidate id (ascending) so the
+    # output is deterministic across Python runs. Without this, dict
+    # iteration order leaked into the ranking and caused CI flakes when
+    # two candidates tied (e.g. ``medallion`` vs ``lambda``).
+    candidates.sort(key=lambda c: (-c["score"], c["id"]))
 
     # Primary velocity
     velocity_candidates: list[tuple[str, str]] = []
@@ -460,10 +483,18 @@ def map_signals(text: str) -> dict:
 
     advisory = None
     if keyword_coverage < 0.05:
+        # ⚠️ DEPRECATED in 2026.05 (ADR-0002): keyword_coverage is a weak signal
+        # because it measures lexical density, not whether the architecture is
+        # complete. The authoritative coverage metric is now
+        # capability_coverage from capability-mapper.py. This advisory is kept
+        # only for backward compatibility with consumers that haven't migrated;
+        # new consumers should prefer the capability-mapper output.
         advisory = (
             "Very low keyword coverage. The problem statement may use "
             "domain-specific language not in the signal registry. "
-            "Ask more targeted follow-up questions to fill gaps."
+            "Ask more targeted follow-up questions to fill gaps. "
+            "(Deprecated metric — see capability-mapper output for the "
+            "authoritative coverage signal.)"
         )
 
     result = {

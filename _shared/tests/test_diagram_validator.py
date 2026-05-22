@@ -107,7 +107,8 @@ class TestLineWidth:
             f for f in result["findings"] if "exceed" in f["message"]
         ]
         assert len(width_issues) == 1
-        assert width_issues[0]["severity"] == "yellow"
+        # Width overflow now fatal — broken layout downstream.
+        assert width_issues[0]["severity"] == "red"
 
     def test_custom_max_width(self):
         line = "x" * 50
@@ -195,8 +196,9 @@ class TestResultStructure:
             assert "severity" in f
             assert "message" in f
 
-    def test_yellow_findings_still_valid(self):
+    def test_overflow_invalidates_result(self):
+        # Width overflow is now red — result should be marked invalid.
         long_line = "x" * 130
         diagram = f"┌──────┐\n│ test │\n└──────┘\n{long_line}"
         result = validate_diagram(diagram, max_width=120)
-        assert result["valid"]
+        assert not result["valid"]

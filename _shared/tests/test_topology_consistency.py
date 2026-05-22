@@ -15,7 +15,7 @@ REPO_ROOT = SHARED_DIR.parent
 PROJECTS_DIR = REPO_ROOT / "_projects"
 
 sys.path.insert(0, str(SHARED_DIR / "lib"))
-from yaml_utils import extract_yaml_blocks, parse_yaml, extract_task_flow
+from yaml_utils import extract_yaml_blocks, parse_yaml, extract_task_flow  # noqa: E402
 
 
 def _discover_complete_projects() -> list[str]:

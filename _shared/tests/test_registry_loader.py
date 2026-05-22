@@ -216,7 +216,41 @@ def test_test_method_map_definition_check_only_when_supported():
 def test_validate_registry_returns_no_errors():
     """The live registry should pass all validation checks."""
     errors = validate_registry()
-    assert errors == [], f"Registry validation errors:\n" + "\n".join(errors)
+    assert errors == [], "Registry validation errors:\n" + "\n".join(errors)
+
+
+def test_validate_registry_reports_non_dict_entries(monkeypatch):
+    """A registry entry that is not a dict must be reported, not crash."""
+    import registry_loader as rl
+
+    bad_registry = {
+        "BadEntry": "this should be a dict",
+        "AlsoBad": ["a", "list"],
+        "Null": None,
+    }
+    monkeypatch.setattr(rl, "load_registry", lambda: bad_registry)
+    errors = rl.validate_registry()
+    assert any("BadEntry: expected object, got str" in e for e in errors)
+    assert any("AlsoBad: expected object, got list" in e for e in errors)
+    assert any("Null: expected object, got NoneType" in e for e in errors)
+
+
+def test_validate_registry_reports_non_list_aliases(monkeypatch):
+    """If aliases is not a list, validate_registry must report it gracefully."""
+    import registry_loader as rl
+
+    bad_registry = {
+        "WeirdAliases": {
+            "fab_type": "Weird",
+            "display_name": "Weird",
+            "phase": "TBD",
+            "task_type": "TBD",
+            "aliases": "not-a-list",
+        },
+    }
+    monkeypatch.setattr(rl, "load_registry", lambda: bad_registry)
+    errors = rl.validate_registry()
+    assert any("WeirdAliases: aliases must be a list" in e for e in errors)
 
 
 # ── Cross-field consistency tests ─────────────────────────────────────────

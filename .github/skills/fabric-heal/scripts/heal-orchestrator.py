@@ -35,7 +35,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "_shared" / "lib"))
 from paths import REPO_ROOT
-from heal_keyword_utils import find_uncovered_keywords, parse_problems
+from heal_keyword_utils import _load_existing_keywords, find_uncovered_keywords, parse_problems
 
 SIGNAL_MAPPER_PATH = REPO_ROOT / ".github" / "skills" / "fabric-discover" / "scripts" / "signal-mapper.py"
 SKILL_DIR = Path(__file__).resolve().parent.parent  # .github/skills/fabric-heal/
@@ -113,6 +113,8 @@ def _resolve_benchmark_project() -> str | None:
 def benchmark_signal_mapper(problems: list[dict]) -> dict:
     """Run signal mapper against all problems and collect metrics."""
     coverage_scores: list[float] = []
+    capability_coverage_scores: list[float] = []
+    capability_gap_count = 0
     zero_candidates = 0
     lambda_suggested = 0
     ambiguous_count = 0
@@ -122,6 +124,7 @@ def benchmark_signal_mapper(problems: list[dict]) -> dict:
     tf_top_counts: Counter = Counter()
 
     benchmark_project = _resolve_benchmark_project()
+    capability_mapper_path = SIGNAL_MAPPER_PATH.parent / "capability-mapper.py"
 
     for p in problems:
         cmd = [sys.executable, str(SIGNAL_MAPPER_PATH), "--text", p["text"], "--format", "json"]
@@ -179,12 +182,31 @@ def benchmark_signal_mapper(problems: list[dict]) -> dict:
             coverage_scores.append(0)
             zero_candidates += 1
 
+        # Capability mapper benchmark (additive; ADR-0002 authoritative metric).
+        if capability_mapper_path.exists():
+            cap_cmd = [sys.executable, str(capability_mapper_path),
+                       "--intake", "--text", p["text"], "--format", "json"]
+            try:
+                cr = subprocess.run(cap_cmd, capture_output=True, text=True,
+                                    timeout=30, encoding="utf-8", env=env)
+                if cr.returncode in (0, 2) and cr.stdout.strip():
+                    cap_data = json.loads(cr.stdout)
+                    capability_coverage_scores.append(cap_data.get("coverage", 0))
+                    if cap_data.get("gaps"):
+                        capability_gap_count += 1
+            except Exception:
+                pass
+
     avg_coverage = (sum(coverage_scores) / len(coverage_scores)
                     if coverage_scores else 0)
+    avg_cap_coverage = (sum(capability_coverage_scores) / len(capability_coverage_scores)
+                        if capability_coverage_scores else 0)
     cat_avgs = {cat: sum(s) / len(s) for cat, s in category_coverage.items()}
 
     return {
         "avg_coverage": avg_coverage,
+        "avg_capability_coverage": avg_cap_coverage,
+        "capability_gap_problems": capability_gap_count,
         "zero_candidates": zero_candidates,
         "lambda_suggested": lambda_suggested,
         "ambiguous": ambiguous_count,
@@ -465,10 +487,13 @@ def generate_prompt(iteration: int, count: int = 25) -> str:
     categories = CATEGORY_ROTATION[cat_idx]
     per_cat = count // len(categories)
 
-    # Read current signal mapper keywords for context
-    sm_content = SIGNAL_MAPPER_PATH.read_text(encoding="utf-8")
-    kw_matches = re.findall(r'"([^"]{2,})"', sm_content)
-    sample_keywords = sorted(set(kw_matches))[:50]
+    # Read current signal mapper keywords for context. The previous
+    # implementation regex-extracted every double-quoted string from the
+    # signal-mapper source — which also grabbed docstrings, error messages,
+    # and stop-words, polluting the prompt with noise. Use the proper
+    # module loader so we get the real CATEGORIES.keywords inventory.
+    existing_kws = _load_existing_keywords(SIGNAL_MAPPER_PATH)
+    sample_keywords = sorted(existing_kws)[:50]
 
     return f"""/fabric-heal Mode 1 — Generate Problem Statements
 
@@ -516,7 +541,9 @@ def generate_heal_prompt(iteration: int, metrics: dict,
 
 ## Iteration {iteration + 1} Benchmark Results
 
-- Avg keyword coverage: {metrics['avg_coverage']:.1%}
+- Avg keyword coverage: {metrics['avg_coverage']:.1%} _(deprecated — see capability coverage below)_
+- Avg capability coverage: {metrics.get('avg_capability_coverage', 0):.1%} _(authoritative; ADR-0002)_
+- Problems with capability gaps: {metrics.get('capability_gap_problems', 0)}/{metrics['total_problems']}
 - Zero-candidate problems: {metrics['zero_candidates']}/{metrics['total_problems']}
 - Lambda suggested: {metrics['lambda_suggested']}/{metrics['total_problems']}
 - Ambiguous: {metrics['ambiguous']}/{metrics['total_problems']}
@@ -852,8 +879,26 @@ def main():
         },
         "recommendations": recommendations,
     }
-    with open(RESULTS_PATH, "w", encoding="utf-8") as f:
-        json.dump(output, f, indent=2)
+    # Atomic write: dump to a sibling tempfile then os.replace into place
+    # so a Ctrl-C / OOM / disk full mid-write doesn't leave a partial JSON
+    # blob that downstream parsers will choke on.
+    import os as _os
+    import tempfile as _tempfile
+    fd, tmp_path = _tempfile.mkstemp(
+        prefix=".heal-results-",
+        suffix=".json.tmp",
+        dir=str(RESULTS_PATH.parent),
+    )
+    try:
+        with _os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(output, f, indent=2)
+        _os.replace(tmp_path, RESULTS_PATH)
+    except Exception:
+        try:
+            _os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
     print(f"  📁 Detailed results: {RESULTS_PATH}")
 
     # Restore original problem statements

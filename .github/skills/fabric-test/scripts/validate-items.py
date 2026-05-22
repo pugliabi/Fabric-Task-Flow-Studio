@@ -29,6 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "_shared" / "lib"))
 from paths import REPO_ROOT
 from registry_loader import load_registry
+from yaml_utils import parse_yaml, parse_yaml_scalar
 
 REGISTRY_DIR = REPO_ROOT / "_shared" / "registry"
 
@@ -53,92 +54,49 @@ def _get_manual_steps(task_flow: str, checklists: dict) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _parse_handoff(path: str) -> tuple[str, str, str, list[dict]]:
-    """Parse deployment-handoff.md → (project, task_flow, workspace, items)."""
+    """Parse deployment-handoff.md → (project, task_flow, workspace, items).
+
+    Delegates to the shared YAML parser instead of the previous hand-rolled
+    state machine. The old parser silently dropped items whose keys appeared
+    in unexpected order or whose values contained colons — both common with
+    LLM-edited handoffs.
+    """
     text = Path(path).read_text(encoding="utf-8")
+
+    parsed = parse_yaml(text)
+
+    # Scalars: tolerate both the shared parser output and legacy YAML
+    # blocks that put metadata under the top-level mapping. Fall back to
+    # the scoped helpers if the shared parser didn't surface the field.
+    def _scalar(name: str) -> str:
+        val = parsed.get(name) if isinstance(parsed.get(name), str) else None
+        if val:
+            return val
+        return parse_yaml_scalar(text, name) or ""
+
+    project = _scalar("project")
+    task_flow = _scalar("task_flow")
+    workspace = _scalar("workspace")
+
+    # Items: accept either ``items`` or ``items_deployed`` as the key.
+    raw_items = parsed.get("items") or parsed.get("items_deployed") or []
+    if not isinstance(raw_items, list):
+        raw_items = []
+
     items: list[dict] = []
-
-    # Extract metadata from YAML block
-    project = ""
-    task_flow = ""
-    workspace = ""
-
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("project:"):
-            project = stripped.split(":", 1)[1].strip().strip('"').strip("'")
-        elif stripped.startswith("task_flow:"):
-            task_flow = stripped.split(":", 1)[1].strip().strip('"').strip("'")
-        elif stripped.startswith("workspace:"):
-            workspace = stripped.split(":", 1)[1].strip().strip('"').strip("'")
-
-    # Parse items block
-    in_items = False
-    current: dict | None = None
-
-    for line in text.splitlines():
-        stripped = line.strip()
-
-        if stripped in ("items_deployed:", "items:"):
-            in_items = True
+    for entry in raw_items:
+        if not isinstance(entry, dict):
             continue
-
-        if in_items and stripped.startswith("- "):
-            if current:
-                items.append(current)
-            current = {"name": "", "type": "", "wave": "", "status": "deployed"}
-
-            # Inline format: - { name: ..., type: ... }
-            if "{" in stripped:
-                mapping = stripped[stripped.index("{"):].strip("{}")
-                for part in re.split(r",\s*(?=\w+\s*:)", mapping):
-                    m = re.match(r"(\w+)\s*:\s*(.*)", part.strip())
-                    if m:
-                        key, val = m.group(1), m.group(2).strip().strip('"').strip("'")
-                        if key in ("name", "item_name"):
-                            current["name"] = val
-                        elif key in ("type", "item_type"):
-                            current["type"] = val
-                        elif key == "wave":
-                            current["wave"] = val
-                        elif key == "status":
-                            current["status"] = val
-                continue
-
-            # Multi-line: - name: value
-            rest = stripped[2:].strip()
-            m = re.match(r"(\w+)\s*:\s*(.*)", rest)
-            if m:
-                key, val = m.group(1), m.group(2).strip().strip('"').strip("'")
-                if key in ("name", "item_name"):
-                    current["name"] = val
-                elif key in ("type", "item_type"):
-                    current["type"] = val
-                elif key == "wave":
-                    current["wave"] = val
-                elif key == "status":
-                    current["status"] = val
-            continue
-
-        if in_items and current and ":" in stripped and not stripped.startswith("#"):
-            m = re.match(r"(\w+)\s*:\s*(.*)", stripped)
-            if m:
-                key, val = m.group(1), m.group(2).strip().strip('"').strip("'")
-                if key in ("name", "item_name"):
-                    current["name"] = val
-                elif key in ("type", "item_type"):
-                    current["type"] = val
-                elif key == "wave":
-                    current["wave"] = val
-                elif key == "status":
-                    current["status"] = val
-
-        # End of items block
-        if in_items and stripped and not stripped.startswith("-") and not stripped.startswith("#") and ":" in stripped:
-            if stripped.split(":")[0].strip() not in ("name", "item_name", "type", "item_type", "wave", "status", "command", "deployment_time"):
-                in_items = False
-
-    if current:
-        items.append(current)
+        name = entry.get("name") or entry.get("item_name") or ""
+        item_type = entry.get("type") or entry.get("item_type") or ""
+        wave = entry.get("wave", "")
+        status = entry.get("status", "deployed")
+        items.append({
+            "name": str(name),
+            "type": str(item_type),
+            "wave": str(wave) if wave != "" else "",
+            "status": str(status),
+        })
 
     return project, task_flow, workspace, items
 

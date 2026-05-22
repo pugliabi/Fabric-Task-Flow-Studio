@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -9,14 +10,35 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from registry_loader import build_layer_map
-from yaml_utils import extract_task_flow as _shared_extract_task_flow
+from yaml_utils import (
+    dump_inline_list as _yaml_inline_list,
+    dump_scalar as _yaml_scalar,
+    extract_task_flow as _shared_extract_task_flow,
+)
 
-from pipeline_state import _load_state, _repo_root, _runtime_attr, _save_state, _state_path
+from pipeline_state import _load_state, _repo_root, _runtime_attr, _save_state
+
+# Mirror capability-mapper.py's EXIT_LLM_NEEDED — keep in sync.
+EXIT_LLM_NEEDED = 2
 
 
 
 def _skills_dir() -> Path:
     return Path(_runtime_attr("SKILLS_DIR", _repo_root() / ".github" / "skills"))
+
+
+def _signal_registry_hash() -> str:
+    """SHA256 of the signal categories registry.
+
+    The signal-mapper cache must be invalidated whenever the registry
+    changes — otherwise an updated category list reading from a stale
+    cache returns results from the old keyword set.
+    """
+    reg = _repo_root() / "_shared" / "registry" / "signal-categories.json"
+    try:
+        return hashlib.sha256(reg.read_bytes()).hexdigest()
+    except OSError:
+        return ""
 
 
 
@@ -29,13 +51,27 @@ def _run_precompute(phase: str, project: str, state: dict) -> list[str]:
 
     if phase == "0a-discovery" and state.get("problem_statement"):
         cache_path = _repo_root() / "_projects" / project / "docs" / ".signal-mapper-cache.json"
+        registry_hash = _signal_registry_hash()
         if cache_path.exists():
             try:
                 cached = json.loads(cache_path.read_text(encoding="utf-8"))
                 cached_problem = (cached.get("problem_statement") or "").strip()
-                if cached_problem and cached_problem == state["problem_statement"].strip():
+                cached_hash = cached.get("registry_hash") or ""
+                problem_matches = (
+                    cached_problem
+                    and cached_problem == state["problem_statement"].strip()
+                )
+                hash_matches = (
+                    not registry_hash  # hash unavailable → fall back to problem-only check
+                    or cached_hash == registry_hash
+                )
+                if problem_matches and hash_matches:
                     outputs.append("📋 Signal mapper cache hit → skipping regeneration")
                     return outputs
+                if problem_matches and not hash_matches:
+                    outputs.append(
+                        "  ⚠ Signal mapper cache stale (registry changed) → regenerating"
+                    )
             except (json.JSONDecodeError, OSError):
                 pass
 
@@ -60,6 +96,8 @@ def _run_precompute(phase: str, project: str, state: dict) -> list[str]:
                 try:
                     cache_data = json.loads(result.stdout)
                     cache_data["problem_statement"] = state["problem_statement"]
+                    if registry_hash:
+                        cache_data["registry_hash"] = registry_hash
                     cache_path.write_text(json.dumps(cache_data, indent=2), encoding="utf-8")
                     outputs.append("  📋 Signal mapper cache written → .signal-mapper-cache.json")
                 except (json.JSONDecodeError, OSError):
@@ -68,6 +106,54 @@ def _run_precompute(phase: str, project: str, state: dict) -> list[str]:
                 outputs.append(f"Signal mapper warning: {result.stderr.strip()}")
         except Exception as exc:
             outputs.append(f"Signal mapper skipped: {exc}")
+
+        # ---- Capability mapper (semantic layer) -----------------------------
+        # Best-effort, additive. Failures here MUST NOT break the discovery
+        # precompute — the deterministic layer is purely advisory at this
+        # stage. Exit code 2 (LLM-needed) is informational only here; the
+        # skill orchestrator handles the actual LLM extraction step.
+        cap_cmd = [
+            sys.executable,
+            str(_skills_dir() / "fabric-discover" / "scripts" / "capability-mapper.py"),
+            "--project", project,
+            "--text", state["problem_statement"],
+            "--format", "json",
+        ]
+        try:
+            cap_result = subprocess.run(
+                cap_cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+            )
+            if cap_result.returncode in (0, EXIT_LLM_NEEDED):
+                try:
+                    cap_data = json.loads(cap_result.stdout)
+                    cap_cache = _repo_root() / "_projects" / project / "docs" / ".capability-mapper-cache.json"
+                    cap_cache.write_text(
+                        json.dumps(cap_data, indent=2), encoding="utf-8"
+                    )
+                    items = ", ".join(cap_data.get("required_items", [])) or "(none)"
+                    coverage = cap_data.get("coverage", 0.0)
+                    outputs.append(
+                        f"  🧭 Capability mapper: coverage {coverage:.2f}, "
+                        f"required_items=[{items}]"
+                    )
+                    if cap_data.get("needs_llm_augmentation"):
+                        outputs.append(
+                            "  🟡 Capability coverage below threshold — the "
+                            "discover skill will run LLM augmentation"
+                        )
+                except (json.JSONDecodeError, OSError):
+                    pass
+            else:
+                outputs.append(
+                    f"Capability mapper warning: {cap_result.stderr.strip()}"
+                )
+        except Exception as exc:
+            outputs.append(f"Capability mapper skipped: {exc}")
 
     elif phase == "1-design" and discovery_path.exists():
         resolver_cmd = [
@@ -78,6 +164,10 @@ def _run_precompute(phase: str, project: str, state: dict) -> list[str]:
         ]
         if task_flow:
             resolver_cmd.extend(["--task-flow", task_flow])
+        _cap_cache = (_repo_root() / "_projects" / project / "docs"
+                      / ".capability-mapper-cache.json")
+        if _cap_cache.exists():
+            resolver_cmd.extend(["--capability-cache", str(_cap_cache)])
         try:
             result = subprocess.run(
                 resolver_cmd,
@@ -101,6 +191,11 @@ def _run_precompute(phase: str, project: str, state: dict) -> list[str]:
                 "--project", project,
                 "--output", str(handoff_path),
             ]
+            # Union in capability-required items if the cache is present.
+            cap_cache_path = (_repo_root() / "_projects" / project / "docs"
+                              / ".capability-mapper-cache.json")
+            if cap_cache_path.exists():
+                scaffolder_cmd.extend(["--capability-cache", str(cap_cache_path)])
             try:
                 result = subprocess.run(
                     scaffolder_cmd,
@@ -221,6 +316,10 @@ def _generate_complete_handoff(project: str) -> tuple[bool, list[str]]:
         "--format", "json",
         "--task-flow", top_tf,
     ]
+    _cap_cache2 = (_repo_root() / "_projects" / project / "docs"
+                   / ".capability-mapper-cache.json")
+    if _cap_cache2.exists():
+        resolver_cmd.extend(["--capability-cache", str(_cap_cache2)])
     try:
         result = subprocess.run(
             resolver_cmd,
@@ -241,8 +340,12 @@ def _generate_complete_handoff(project: str) -> tuple[bool, list[str]]:
             )
         else:
             report.append(f"  ⚠️ Decision resolver returned exit {result.returncode}")
+            report.append("  ⛔ Refusing to fast-forward with generic boilerplate handoff — architect must run manually")
+            return False, report
     except Exception as exc:
         report.append(f"  ⚠️ Decision resolver failed: {exc}")
+        report.append("  ⛔ Refusing to fast-forward — architect must run manually")
+        return False, report
 
     scaffolder_cmd = [
         sys.executable,
@@ -260,6 +363,10 @@ def _generate_complete_handoff(project: str) -> tuple[bool, list[str]]:
             newline="\n",
         )
         scaffolder_cmd.extend(["--decisions", str(decisions_file)])
+    cap_cache_path = (_repo_root() / "_projects" / project / "docs"
+                      / ".capability-mapper-cache.json")
+    if cap_cache_path.exists():
+        scaffolder_cmd.extend(["--capability-cache", str(cap_cache_path)])
     try:
         result = subprocess.run(
             scaffolder_cmd,
@@ -474,20 +581,37 @@ def _generate_deployment_handoff(project: str) -> tuple[bool, list[str]]:
     item_status = "planned" if deploy_mode == "artifacts_only" else "not_started"
 
     items_yaml: list[str] = []
+    missing_wave: list[str] = []
     for artifact in platform_items:
         path_parts = artifact["path"].replace("\\", "/").split("/")
         filename = path_parts[-1] if path_parts else "unknown"
         name_type = filename.rsplit(".", 1)
         item_name = name_type[0] if name_type else filename
         item_type = name_type[1] if len(name_type) > 1 else "Unknown"
-        wave = wave_map.get(item_name, 1)
+        if item_name in wave_map:
+            wave = wave_map[item_name]
+        else:
+            wave = 1
+            missing_wave.append(item_name)
         items_yaml.append(
-            f"  - name: {item_name}\n"
-            f"    type: {item_type}\n"
+            f"  - name: {_yaml_scalar(item_name)}\n"
+            f"    type: {_yaml_scalar(item_type)}\n"
             f"    wave: {wave}\n"
             f"    status: {item_status}\n"
             f"    command: fabric-cicd deploy_with_config\n"
             f"    notes: \"\""
+        )
+
+    if missing_wave:
+        # Collapsing every unknown-wave item into wave 1 produces a single
+        # mega-wave with no dependency ordering. Surface it clearly so the
+        # operator can rebuild .architecture-cache.json instead of shipping a
+        # broken plan.
+        report.append(
+            "  ⚠️ wave_map missing entries for "
+            f"{len(missing_wave)} item(s): {', '.join(missing_wave[:10])}"
+            + ("…" if len(missing_wave) > 10 else "")
+            + " — defaulted to wave 1. Regenerate .architecture-cache.json."
         )
 
     wave_nums = sorted({
@@ -503,7 +627,7 @@ def _generate_deployment_handoff(project: str) -> tuple[bool, list[str]]:
         ]
         waves_yaml.append(
             f"  - id: {wave_num}\n"
-            f"    items: [{', '.join(wave_items)}]\n"
+            f"    items: {_yaml_inline_list(wave_items)}\n"
             f"    status: {'planned' if deploy_mode == 'artifacts_only' else 'not_started'}"
         )
 
@@ -515,7 +639,7 @@ def _generate_deployment_handoff(project: str) -> tuple[bool, list[str]]:
         f"deployment_mode: {deploy_mode}\n"
         f"parameterization: none\n\n"
         f"items:\n" + "\n".join(items_yaml) + "\n\n"
-        f"waves:\n" + "\n".join(waves_yaml) + "\n\n"
+        "waves:\n" + "\n".join(waves_yaml) + "\n\n"
         f"manual_steps:\n"
         f"  completed: []\n"
         f"  pending: []\n\n"
@@ -588,9 +712,9 @@ def _generate_validation_report(project: str) -> tuple[bool, list[str]]:
             f'    notes: "{count} item(s) validated: {names_str}"'
         )
     phase_yaml_parts.append(
-        f"  - name: CI/CD Readiness\n"
-        f"    status: pass\n"
-        f'    notes: "config.yml and deploy script generated"'
+        "  - name: CI/CD Readiness\n"
+        "    status: pass\n"
+        '    notes: "config.yml and deploy script generated"'
     )
     phases_block = "\n".join(phase_yaml_parts)
 

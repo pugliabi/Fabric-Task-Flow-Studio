@@ -129,7 +129,7 @@ def test_slugify_phase_numbers():
 
 # ── escape_for_python_string ─────────────────────────────────────────────
 
-from lib.text_utils import escape_for_python_string
+from lib.text_utils import escape_for_python_string  # noqa: E402
 
 
 def test_escape_for_python_string_basic():

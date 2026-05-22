@@ -1,0 +1,362 @@
+{
+  "schema": "Fabric Task Flows Capability Registry",
+  "version": "1.0.0",
+  "description": "Semantic capability layer: maps abstract intents extracted from problem statements to required Fabric capabilities, and capabilities to concrete Fabric item types. Complements signal-categories.json (lexical layer) — this registry handles intent→capability→items, signal-categories handles word→velocity→task-flow. ⚠️ AGENTS: Do NOT read this file directly — use capability-mapper.py instead.",
+  "registry_version": "2026.05.22-1",
+  "intents": [
+    {
+      "id": "expose-data-to-data-scientists",
+      "summary": "User wants data scientists / ML practitioners to access and explore organizational data",
+      "patterns": {
+        "strong": [
+          "data scientist",
+          "data scientists",
+          "ML team",
+          "data science team",
+          "machine learning team"
+        ],
+        "moderate": [
+          "data rich",
+          "insight poor",
+          "mountain of data",
+          "make use of (the |our )?(data|info|information)",
+          "get smarter with (the |our )?data",
+          "unlock (the |our )?data",
+          "leverage (the |our )?data"
+        ],
+        "weak": [
+          "trapped (in|behind)",
+          "siloed data",
+          "data silos"
+        ]
+      },
+      "llm_hint": "User is describing a gap between data availability and analytical/ML use of that data. Triggers Python/ML runtime + curated historical store.",
+      "requires_capabilities": ["python-ml-runtime", "historical-medallion-store"]
+    },
+    {
+      "id": "conversational-ai-self-service",
+      "summary": "User wants natural-language or AI-assisted querying of data",
+      "patterns": {
+        "strong": [
+          "conversational AI",
+          "chat with (the |our |my )?(data|agent|reports)",
+          "ask (the |our )?(data|agent)",
+          "natural language query",
+          "natural language interface",
+          "AI assistant"
+        ],
+        "moderate": [
+          "AI angle",
+          "AI strategy",
+          "AI capabilities",
+          "AI feature",
+          "AI features",
+          "Copilot",
+          "self-service AI",
+          "ask questions about (the |our )?data",
+          "talk to (the |our )?data",
+          "plain English query",
+          "plain language"
+        ],
+        "weak": [
+          "AI",
+          "chatbot",
+          "Q&A"
+        ]
+      },
+      "llm_hint": "User wants non-technical users (analysts, executives) to interrogate data without writing SQL or KQL. Triggers DataAgent with governed semantic context.",
+      "requires_capabilities": ["conversational-query"]
+    },
+    {
+      "id": "preserve-historical-depth",
+      "summary": "User has long historical record and wants to derive value from it",
+      "patterns": {
+        "strong": [
+          "20 years",
+          "10 years",
+          "decade(s)? of data",
+          "decade(s)? of history",
+          "historical data",
+          "years of history"
+        ],
+        "moderate": [
+          "legacy data",
+          "stored over (the )?(last|past) \\d+ years",
+          "archived data",
+          "long(-| )term retention"
+        ],
+        "weak": [
+          "history",
+          "archive"
+        ]
+      },
+      "llm_hint": "User has a large historical corpus that needs cheap durable storage AND a structure suitable for analytical workloads (medallion bronze/silver/gold).",
+      "requires_capabilities": ["historical-medallion-store"]
+    },
+    {
+      "id": "modernize-field-intake",
+      "summary": "User has manual/paper-based field intake and wants to digitize it",
+      "patterns": {
+        "strong": [
+          "pen and paper",
+          "paper(-| )based (process|intake|forms)",
+          "manual (forms|intake|data entry)",
+          "field forms",
+          "mobile forms",
+          "mobile intake"
+        ],
+        "moderate": [
+          "out in the field",
+          "field workers",
+          "field crews",
+          "crew(s)? in the field",
+          "field operations",
+          "clipboard"
+        ],
+        "weak": [
+          "field"
+        ]
+      },
+      "llm_hint": "User has humans in the field capturing data manually. Triggers a low-code mobile/form-friendly ingest path (Power Apps + CopyJob/DataPipeline into lakehouse bronze).",
+      "requires_capabilities": ["mobile-field-intake", "low-code-ingest"]
+    },
+    {
+      "id": "low-latency-event-response",
+      "summary": "User needs sub-minute (often sub-second) reaction to incoming signals",
+      "patterns": {
+        "strong": [
+          "seconds (of |worth of )?latency",
+          "sub-second",
+          "milliseconds",
+          "real-time",
+          "live (feed|stream|view)",
+          "field-to-screen"
+        ],
+        "moderate": [
+          "as it happens",
+          "the moment",
+          "right away",
+          "immediately",
+          "instantly",
+          "box signal",
+          "machine signal",
+          "sensor (signal|reading|telemetry)",
+          "SCADA",
+          "telemetry"
+        ],
+        "weak": [
+          "fast",
+          "quick",
+          "current",
+          "now"
+        ]
+      },
+      "llm_hint": "User cannot tolerate batch latency. Triggers Eventstream (ingest) + Eventhouse (low-latency store) + KQL Dashboard or Real-Time Dashboard (serve).",
+      "requires_capabilities": ["low-latency-event-store", "streaming-ingest"]
+    },
+    {
+      "id": "alerting-and-triggers",
+      "summary": "User wants automated alerts or actions when thresholds are crossed",
+      "patterns": {
+        "strong": [
+          "alerts? when",
+          "notify when",
+          "triggers? when",
+          "automated alerts?",
+          "automated triggers?",
+          "send notifications?",
+          "trigger notifications?",
+          "page (a |on-call )",
+          "thresholds? (are |is )?(breached|exceeded|crossed)"
+        ],
+        "moderate": [
+          "anomaly detection",
+          "threshold (breach|exceeded|alert)",
+          "early warning",
+          "proactive alerts?",
+          "real-time alerts?"
+        ],
+        "weak": [
+          "alerts?",
+          "notify",
+          "triggers?"
+        ]
+      },
+      "llm_hint": "User needs reactive automation. Triggers Activator/Reflex on top of the streaming or analytical layer.",
+      "requires_capabilities": ["alerting-trigger"]
+    },
+    {
+      "id": "prefer-low-code-ingest",
+      "summary": "User explicitly prefers low-code or SQL-first tooling for ingestion/transforms",
+      "patterns": {
+        "strong": [
+          "low(-| )code",
+          "no(-| )code",
+          "SQL shop",
+          "SQL team",
+          "drag(-| )and(-| )drop",
+          "wizard(-| )driven"
+        ],
+        "moderate": [
+          "minimize (Python|Spark|code)",
+          "keep .{0,15}(SQL|productive)",
+          "traditional .{0,15}(SQL|BI)"
+        ],
+        "weak": [
+          "GUI",
+          "click(-| )through"
+        ]
+      },
+      "llm_hint": "User wants to keep existing SQL/BI team productive without forcing them into PySpark. Bias ingestion toward CopyJob/DataPipeline/Dataflow Gen2.",
+      "requires_capabilities": ["low-code-ingest"]
+    },
+    {
+      "id": "code-first-for-ml-ai",
+      "summary": "User wants code-first Python/Spark for ML/AI workloads even if other workloads are low-code",
+      "patterns": {
+        "strong": [
+          "Python(/| |-)?PySpark",
+          "PySpark",
+          "code(-| )first .{0,20}(ML|AI|model)",
+          "ML pipeline",
+          "model training",
+          "feature engineering",
+          "data scientist (uses |needs |wants )?(Python|notebook)"
+        ],
+        "moderate": [
+          "Jupyter",
+          "notebook(s)?",
+          "MLflow",
+          "scikit(-| )learn",
+          "PyTorch",
+          "TensorFlow"
+        ],
+        "weak": [
+          "Python",
+          "Spark"
+        ]
+      },
+      "llm_hint": "User has or wants ML practitioners working in code. Triggers Notebook (Python/PySpark) bound to Lakehouse + optional MLModel/MLExperiment.",
+      "requires_capabilities": ["python-ml-runtime"]
+    },
+    {
+      "id": "semantic-self-service-bi",
+      "summary": "User wants governed semantic model for analyst self-service reporting",
+      "patterns": {
+        "strong": [
+          "semantic model",
+          "self(-| )service BI",
+          "governed metrics",
+          "single source of truth",
+          "certified dataset",
+          "Power BI"
+        ],
+        "moderate": [
+          "analyst(s)? .{0,20}(report|dashboard|explore)",
+          "business user(s)?",
+          "drag(-| )and(-| )drop reports"
+        ],
+        "weak": [
+          "report",
+          "dashboard"
+        ]
+      },
+      "llm_hint": "User wants governed BI consumption. Triggers SemanticModel + Report layered on Lakehouse SQL endpoint or Warehouse.",
+      "requires_capabilities": ["semantic-self-service"]
+    },
+    {
+      "id": "compliance-and-sensitive-data",
+      "summary": "User must handle regulated, sensitive, or governed data",
+      "patterns": {
+        "strong": [
+          "HIPAA",
+          "GDPR",
+          "SOC2",
+          "SOX",
+          "PCI",
+          "PII",
+          "PHI",
+          "regulated data",
+          "compliance requirement"
+        ],
+        "moderate": [
+          "sensitive data",
+          "data protection",
+          "audit trail",
+          "access control",
+          "row(-| )level security",
+          "column(-| )level security"
+        ],
+        "weak": [
+          "secure",
+          "private",
+          "confidential"
+        ]
+      },
+      "llm_hint": "User has regulatory obligations. Triggers Variable Library for secrets + workspace-level governance + sensitivity labels.",
+      "requires_capabilities": ["secrets-governance"]
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "python-ml-runtime",
+      "summary": "A Python/PySpark execution environment bound to lakehouse storage, suitable for data-science exploration and ML training.",
+      "satisfied_by_items": ["Notebook"],
+      "supporting_items": ["MLModel", "MLExperiment", "Environment"]
+    },
+    {
+      "id": "historical-medallion-store",
+      "summary": "Durable, cheap, multi-zone (bronze/silver/gold) store for years of structured + semi-structured history with Spark + SQL access.",
+      "satisfied_by_items": ["Lakehouse"],
+      "supporting_items": ["Warehouse", "MirroredDatabase"]
+    },
+    {
+      "id": "conversational-query",
+      "summary": "Natural-language interface over governed data — users ask plain-English questions, the platform answers from curated sources.",
+      "satisfied_by_items": ["DataAgent"],
+      "supporting_items": ["SemanticModel"]
+    },
+    {
+      "id": "mobile-field-intake",
+      "summary": "An ingest path optimized for mobile/field-form submissions (replacing pen-and-paper).",
+      "satisfied_by_items": ["CopyJob", "DataPipeline"],
+      "supporting_items": ["Dataflow", "UserDataFunction"]
+    },
+    {
+      "id": "low-latency-event-store",
+      "summary": "A low-latency event/time-series store sized for seconds-class KQL queries on streaming data.",
+      "satisfied_by_items": ["Eventhouse"],
+      "supporting_items": ["KQLDatabase"]
+    },
+    {
+      "id": "streaming-ingest",
+      "summary": "Native streaming ingest from sensors, message brokers, or change-data-capture sources.",
+      "satisfied_by_items": ["Eventstream"],
+      "supporting_items": []
+    },
+    {
+      "id": "alerting-trigger",
+      "summary": "Automated trigger/alert mechanism that fires on threshold conditions in streaming or analytical data.",
+      "satisfied_by_items": ["Reflex"],
+      "supporting_items": ["OperationsAgent"]
+    },
+    {
+      "id": "low-code-ingest",
+      "summary": "Low-code or no-code ingestion path for SQL-first teams: scheduled bulk + incremental loads without Spark.",
+      "satisfied_by_items": ["CopyJob", "DataPipeline", "Dataflow"],
+      "supporting_items": []
+    },
+    {
+      "id": "semantic-self-service",
+      "summary": "Governed semantic layer + reporting surface for analyst self-service over the lakehouse or warehouse.",
+      "satisfied_by_items": ["SemanticModel", "Report"],
+      "supporting_items": ["PaginatedReport", "Dashboard"]
+    },
+    {
+      "id": "secrets-governance",
+      "summary": "Centralized secrets and parameter management for environment-aware deployment.",
+      "satisfied_by_items": ["VariableLibrary"],
+      "supporting_items": ["Environment"]
+    }
+  ]
+}

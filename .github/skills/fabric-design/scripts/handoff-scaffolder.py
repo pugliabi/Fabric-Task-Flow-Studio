@@ -33,6 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "_shared" / "lib"))
 from paths import REPO_ROOT
 from registry_loader import build_fab_type_map, load_registry, build_alternatives_map, build_display_names, build_type_to_decision_map, get_deployment_items
+from yaml_utils import dump_inline_list as _yaml_dump_inline_list, dump_scalar as _yaml_dump_scalar
 
 FAB_TYPE_MAP: dict[str, str] = build_fab_type_map()
 DISPLAY_NAMES: dict[str, str] = build_display_names()
@@ -319,9 +320,16 @@ def _filter_by_decisions(items: list[DiagramItem], decisions: dict) -> list[Diag
             fallback.is_alternative = False
             fallback.alternative_group = None
             filtered.append(fallback)
-            import sys
-            print(f"  ⚠ Decision '{group_key}' resolved to a type not in this task flow — "
-                  f"falling back to {fallback.item_type}", file=sys.stderr)
+            # Loud, structured warning so this can be grepped from CI logs.
+            # Architecture decisions that don't match the task flow are a
+            # data-quality problem — silently picking the first alternative
+            # has misled users in the past.
+            print(
+                f"  🚨 DECISION_MISMATCH: '{group_key}' choice not in task flow; "
+                f"falling back to {fallback.item_type}. "
+                f"Verify the decision is correct or update the task flow.",
+                file=sys.stderr,
+            )
 
     # Clean up: if an alternative survived filtering but ALL its counterparts
     # were pruned, it's no longer an alternative — clear the flag.
@@ -420,24 +428,26 @@ def _build_waves(deploy_items: list[DeployItem]) -> list[Wave]:
 
 
 # ── YAML emitters ─────────────────────────────────────────────────────────
+#
+# Emit YAML via the shared helpers so the output round-trips through
+# yaml_utils.parse_yaml — prior hand-rolled quoting silently corrupted
+# names/purposes containing spaces, colons, or quotes.
 
 def _yaml_list(items: list[str]) -> str:
-    if not items:
-        return "[]"
-    return "[" + ", ".join(items) + "]"
+    return _yaml_dump_inline_list(list(items))
 
 
 def _emit_items_yaml(deploy_items: list[DeployItem]) -> str:
     lines = ["items:"]
     for i, di in enumerate(deploy_items, start=1):
         lines.append(f"  - id: {i}")
-        lines.append(f"    name: \"{di.item_name}\"")
-        lines.append(f"    type: \"{di.item_type}\"")
-        lines.append(f"    skillset: \"{di.fab_type}\"")
-        lines.append(f"    depends_on: {_yaml_list(di.dependencies)}")
-        lines.append(f"    purpose: \"{di.purpose}\"")
+        lines.append(f"    name: {_yaml_dump_scalar(di.item_name)}")
+        lines.append(f"    type: {_yaml_dump_scalar(di.item_type)}")
+        lines.append(f"    skillset: {_yaml_dump_scalar(di.fab_type)}")
+        lines.append(f"    depends_on: {_yaml_dump_inline_list(list(di.dependencies))}")
+        lines.append(f"    purpose: {_yaml_dump_scalar(di.purpose)}")
         if di.is_alternative and di.alternative_note:
-            lines.append(f"    note: \"{di.alternative_note}\"")
+            lines.append(f"    note: {_yaml_dump_scalar(di.alternative_note)}")
         if di.portal_only:
             lines.append("    note: \"portal-only — verify manually\"")
     return "\n".join(lines)
@@ -449,10 +459,10 @@ def _emit_waves_yaml(waves: list[Wave]) -> str:
         wave_name = f"Wave {w.wave_number}"
         blocked_by = [w.wave_number - 1] if w.wave_number > 1 else []
         lines.append(f"  - id: {w.wave_number}")
-        lines.append(f"    name: \"{wave_name}\"")
-        lines.append(f"    items: {_yaml_list(w.items)}")
+        lines.append(f"    name: {_yaml_dump_scalar(wave_name)}")
+        lines.append(f"    items: {_yaml_dump_inline_list(list(w.items))}")
         if blocked_by:
-            lines.append(f"    blocked_by: {_yaml_list([str(b) for b in blocked_by])}")
+            lines.append(f"    blocked_by: {_yaml_dump_inline_list(blocked_by)}")
         lines.append(f"    parallel: {'true' if w.parallel_capable else 'false'}")
     return "\n".join(lines)
 
@@ -462,11 +472,16 @@ def _emit_ac_yaml(deploy_items: list[DeployItem], task_flow: str) -> str:
     for i, di in enumerate(deploy_items, start=1):
         ac_id = f"AC-{i}"
         portal_suffix = " (portal-only — verify manually)" if di.portal_only else ""
+        criterion = f"{di.item_name} exists and is accessible{portal_suffix}"
+        verify = (
+            f"REST API GET /workspaces/{{id}}/items?type={di.fab_type} | "
+            f"verify {di.item_name}"
+        )
         lines.append(f"  - id: {ac_id}")
         lines.append(f"    type: structural")
-        lines.append(f"    criterion: \"{di.item_name} exists and is accessible{portal_suffix}\"")
-        lines.append(f"    verify: \"REST API GET /workspaces/{{id}}/items?type={di.fab_type} | verify {di.item_name}\"")
-        lines.append(f"    target: \"{di.item_name}\"")
+        lines.append(f"    criterion: {_yaml_dump_scalar(criterion)}")
+        lines.append(f"    verify: {_yaml_dump_scalar(verify)}")
+        lines.append(f"    target: {_yaml_dump_scalar(di.item_name)}")
     return "\n".join(lines)
 
 
@@ -667,13 +682,17 @@ def _build_deployment_strategy(decisions: dict | None, task_flow: str) -> list[s
 
     return rows
 
-def scaffold(task_flow: str, project: str, decisions: dict | None = None) -> str:
+def scaffold(task_flow: str, project: str, decisions: dict | None = None,
+             required_items: list[str] | None = None) -> str:
     """Generate a scaffolded architecture handoff markdown string.
 
     Args:
         task_flow: Task flow ID (e.g. 'medallion', 'lambda').
         project: Human-readable project name.
         decisions: Optional dict from decision-resolver output.
+        required_items: Optional list of capability-required item type keys
+            (from capability-mapper). Items not already in the task-flow
+            default are added with a "required by capability mapper" note.
 
     Returns:
         Markdown string with pre-filled YAML blocks.
@@ -688,6 +707,32 @@ def scaffold(task_flow: str, project: str, decisions: dict | None = None) -> str
         diagram_items = _filter_by_decisions(diagram_items, decisions)
 
     deploy_items = _build_deploy_items(diagram_items)
+
+    # ---- Union in capability-required items ------------------------------
+    # Additive only: if the capability mapper says we need an item type that
+    # the chosen task flow doesn't already include, append it as an extra
+    # wave-2 item with a clear rationale. Architects can prune in review.
+    if required_items:
+        present_types = {di.item_type.lower() for di in deploy_items}
+        for item_type in required_items:
+            if not item_type:
+                continue
+            if item_type.lower() in present_types:
+                continue
+            extra = DeployItem(
+                item_name=_to_kebab(item_type),
+                item_type=_display_name(item_type),
+                fab_type=item_type,
+                wave=2,
+                dependencies=[],
+                purpose=f"Required by capability mapper (not in {task_flow} default)",
+                is_alternative=False,
+                alternative_note=None,
+                portal_only=False,
+            )
+            deploy_items.append(extra)
+            present_types.add(item_type.lower())
+
     waves = _build_waves(deploy_items)
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -808,6 +853,13 @@ def main() -> None:
                         help="Project name")
     parser.add_argument("--decisions", default=None,
                         help="Path to decision-resolver output (JSON or legacy YAML)")
+    parser.add_argument("--required-items", default=None,
+                        help="Comma-separated list of capability-required item types "
+                             "(from capability-mapper). Adds any item not already in "
+                             "the task-flow default.")
+    parser.add_argument("--capability-cache", default=None,
+                        help="Path to .capability-mapper-cache.json; if given, "
+                             "the cache's required_items[] is unioned in.")
     parser.add_argument("--output", default=None,
                         help="Output file path (default: stdout)")
     args = parser.parse_args()
@@ -823,8 +875,22 @@ def main() -> None:
             print(f"Error reading decisions file: {e}", file=sys.stderr)
             sys.exit(2)
 
+    required_items: list[str] = []
+    if args.required_items:
+        required_items.extend(
+            s.strip() for s in args.required_items.split(",") if s.strip()
+        )
+    if args.capability_cache:
+        try:
+            import json as _json
+            cache = _json.loads(Path(args.capability_cache).read_text(encoding="utf-8"))
+            required_items.extend(cache.get("required_items", []))
+        except (OSError, ValueError) as e:
+            print(f"Warning: could not read capability cache: {e}", file=sys.stderr)
+
     try:
-        result = scaffold(args.task_flow, args.project, decisions)
+        result = scaffold(args.task_flow, args.project, decisions,
+                          required_items=required_items or None)
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

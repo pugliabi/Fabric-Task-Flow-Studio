@@ -46,6 +46,18 @@ REGISTRY_TYPES: dict = load_registry()
 _TEMPLATES_DIR = SHARED_DIR / "templates"
 
 
+def _safe_int(value, default: int = 0) -> int:
+    """Coerce YAML-parsed values (str/int/None) to int, falling back on default."""
+    if value is None:
+        return default
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
 def _load_template_files(cicd_type: str) -> dict[str, str] | None:
     """Load definition files from _shared/templates/{cicd_type}/.
 
@@ -109,7 +121,7 @@ def _parse_items_block(yaml_text: str) -> list[Item]:
             brace_start = stripped.index("{")
             mapping = parse_inline_mapping(stripped[brace_start:])
             items.append(Item(
-                id=int(mapping.get("id", 0)),
+                id=_safe_int(mapping.get("id", 0)),
                 name=str(mapping.get("name", mapping.get("item_name", ""))),
                 type=str(mapping.get("type", mapping.get("item_type", ""))),
                 skillset=str(mapping.get("skillset", "")),
@@ -179,7 +191,7 @@ def _dict_to_item(d: dict[str, str]) -> Item:
     else:
         deps = []
     return Item(
-        id=int(d.get("id", 0)),
+        id=_safe_int(d.get("id", 0)),
         name=name,
         type=item_type,
         skillset=d.get("skillset", ""),
@@ -236,7 +248,7 @@ def _parse_waves_block(yaml_text: str) -> list[Wave]:
             brace_start = stripped.index("{")
             mapping = parse_inline_mapping(stripped[brace_start:])
             waves.append(Wave(
-                id=int(mapping.get("id", mapping.get("wave_number", 0))),
+                id=_safe_int(mapping.get("id", mapping.get("wave_number", 0))),
                 items=[str(x) for x in (mapping.get("items") or [])],
                 blocked_by=[str(x) for x in (mapping.get("blocked_by", mapping.get("dependencies")) or [])],
                 note=str(mapping.get("note", "")),
@@ -271,7 +283,7 @@ def _parse_waves_block(yaml_text: str) -> list[Wave]:
 
 def _dict_to_wave(d: dict[str, str]) -> Wave:
     """Convert a parsed dict to a Wave dataclass."""
-    wave_id = int(d.get("id", d.get("wave_number", 0)))
+    wave_id = _safe_int(d.get("id", d.get("wave_number", 0)))
     items_raw = d.get("items", "[]")
     if isinstance(items_raw, str) and items_raw.startswith("["):
         inner = items_raw[1:-1].strip()
@@ -343,7 +355,7 @@ def _parse_json_handoff(content: str, path: str) -> HandoffData:
             except (ValueError, TypeError):
                 deps.append(str(d))
         items.append(Item(
-            id=int(item_data.get("id", 0)),
+            id=_safe_int(item_data.get("id", 0)),
             name=str(item_data.get("name", "")),
             type=str(item_data.get("type", "")),
             skillset=str(item_data.get("skillset", "")),
@@ -354,7 +366,7 @@ def _parse_json_handoff(content: str, path: str) -> HandoffData:
     waves: list[Wave] = []
     for wave_data in data.get("waves", []):
         waves.append(Wave(
-            id=int(wave_data.get("id", 0)),
+            id=_safe_int(wave_data.get("id", 0)),
             items=wave_data.get("items", []),
             blocked_by=wave_data.get("blocked_by", []),
         ))
@@ -476,7 +488,7 @@ _TYPE_REMAP: dict[str, str] = build_type_remap()
 
 def _cicd_type(item_type: str) -> str:
     """Resolve item type to fabric-cicd compatible name. Returns empty string if unsupported."""
-    fab_type= _resolve_fab_type(item_type)
+    fab_type = _resolve_fab_type(item_type)
     fab_type = _TYPE_REMAP.get(fab_type, fab_type)
     return fab_type if fab_type in _FABRIC_CICD_TYPES else ""
 
@@ -870,7 +882,10 @@ def populate_variable_library(ws_id, headers):
     if update_resp.ok or update_resp.status_code == 202:
         print(f"  ── Populated {{len(variables)}} variables ({{ref_count}} ItemReferences + {{str_count}} metadata)")
     else:
-        print(f"  ── Could not update Variable Library: {{update_resp.text[:200]}}")
+        # Do not echo response body — Fabric REST errors can contain request
+        # context (URLs, partial tokens). Surface status only; full detail
+        # available via Fabric portal / Activity Log.
+        print(f"  ── Could not update Variable Library (HTTP {{update_resp.status_code}})")
         script_dir = os.path.dirname(os.path.abspath(__file__))
         fallback = os.path.join(script_dir, "variable-library-definition.json")
         with open(fallback, "w", encoding="utf-8", newline="\\n") as f:
@@ -1170,7 +1185,7 @@ def _gen_parameter_yml(data: HandoffData, project: str) -> str:
                 "",
             ]
 
-    # Generateitem-specific replacements for items that reference other items
+    # Generate item-specific replacements for items that reference other items
     for item in data.items:
         if not item.name or not item.depends_on:
             continue
@@ -1327,22 +1342,32 @@ def main() -> None:
     print(f"✅ {desc_path}")
 
     # 5. Generate task flow JSON template
-    try:
-        tf_gen_path = Path(__file__).resolve().parent / "taskflow-gen.py"
-        if tf_gen_path.exists():
+    tf_gen_path = Path(__file__).resolve().parent / "taskflow-gen.py"
+    tf_path = out / f"taskflow-{slug}.json"
+    tf_generated = False
+    if tf_gen_path.exists():
+        try:
             import subprocess as _sp
-            tf_path = out / f"taskflow-{slug}.json"
-            _sp.run(
+            tf_result = _sp.run(
                 [sys.executable, str(tf_gen_path), "template",
                  "--handoff", args.handoff,
                  "--project", args.project,
                  "--output", str(tf_path)],
                 capture_output=True, text=True, timeout=30, encoding="utf-8",
             )
-            if tf_path.exists():
+            if tf_result.returncode != 0:
+                # Surface the failure — a missing taskflow template makes
+                # the downstream handoff manifest incomplete.
+                print(
+                    f"⚠️  taskflow-gen failed (exit {tf_result.returncode}): "
+                    f"{tf_result.stderr.strip()[:500]}",
+                    file=sys.stderr,
+                )
+            elif tf_path.exists():
+                tf_generated = True
                 print(f"✅ {tf_path}")
-    except Exception as e:
-        print(f"⚠️  Task flow template generation skipped: {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"⚠️  Task flow template generation skipped: {e}", file=sys.stderr)
 
     # 6. Write deployment manifest for idempotency tracking
     artifacts = []
@@ -1355,8 +1380,7 @@ def main() -> None:
     artifacts.append({"path": str(config_path.relative_to(out)), "type": "config"})
     artifacts.append({"path": str(deploy_path.relative_to(out)), "type": "deploy_script"})
     artifacts.append({"path": str(desc_path.relative_to(out)), "type": "config"})
-    tf_path = out / f"taskflow-{slug}.json"
-    if tf_path.exists():
+    if tf_generated and tf_path.exists():
         artifacts.append({"path": str(tf_path.relative_to(out)), "type": "config"})
     manifest = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
