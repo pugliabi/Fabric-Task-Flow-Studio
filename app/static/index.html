@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Fabric Task Flows Studio</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
 <style>
   :root{
     --bg:#0d1017; --panel:#141924; --panel-2:#1b2230; --line:#26303f;
@@ -23,7 +24,7 @@
   /* ---------- Home ---------- */
   #home{max-width:940px;margin:0 auto;padding:48px 24px 64px;display:flex;flex-direction:column;gap:24px}
   .brand{display:flex;align-items:center;gap:12px}
-  .brand .logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:grid;place-items:center;font-weight:800;color:#fff;font-size:18px}
+  .brand .logo{width:42px;height:42px;flex:0 0 auto;display:block}
   .brand h1{font-size:21px;margin:0}
   .brand p{margin:2px 0 0;color:var(--muted);font-size:13px}
   .grid2{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;align-items:start}
@@ -195,7 +196,16 @@
 <!-- ============ HOME ============ -->
 <section id="home">
   <div class="brand">
-    <div class="logo">F</div>
+    <svg class="logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="logo">
+      <defs>
+        <linearGradient id="ltile" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5a97ff"/><stop offset="1" stop-color="#7c5cff"/></linearGradient>
+        <linearGradient id="lnode" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2fe0c0"/><stop offset="1" stop-color="#eafff9"/></linearGradient>
+      </defs>
+      <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#ltile)"/>
+      <path d="M17 47 C 31 47, 29 25, 45 20" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+      <circle cx="17" cy="47" r="6.5" fill="#fff"/>
+      <g transform="translate(45 20) rotate(45)"><rect x="-9.5" y="-9.5" width="19" height="19" rx="4.5" fill="url(#lnode)" stroke="#fff" stroke-width="3"/></g>
+    </svg>
     <div><h1>Fabric Task Flows Studio</h1><p>From problem to production — chat your way through the whole pipeline.</p></div>
   </div>
 
@@ -639,7 +649,19 @@ async function post(url,body){const r=await fetch(url,{method:'POST',headers:{'C
 let toastT=null;
 function toast(m){let t=$('.toast');if(t)t.remove();t=el('div','toast',m);document.body.appendChild(t);clearTimeout(toastT);toastT=setTimeout(()=>t.remove(),2800);}
 
-loadBackends(); startDash();
+// init — supports deep-links:  ?open=<project>  and optional  &doc=<file.md>
+(async()=>{
+  await loadBackends();
+  const params=new URLSearchParams(location.search);
+  const openP=params.get('open');
+  if(openP){
+    openProject(openP);
+    const doc=params.get('doc');
+    if(doc) setTimeout(()=>openDoc(doc,false),1800);
+  } else {
+    startDash();
+  }
+})();
 // pause polling when the tab is hidden to save cycles
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){stopDash();}

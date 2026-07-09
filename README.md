@@ -1,85 +1,122 @@
-# Task Flows for Microsoft Fabric
+<p align="center">
+  <img src="app/docs/images/banner.png" alt="Fabric Task Flows Studio" width="900"/>
+</p>
 
-[![CI](https://github.com/microsoft/fabric-task-flows/actions/workflows/ci.yml/badge.svg)](https://github.com/microsoft/fabric-task-flows/actions/workflows/ci.yml)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<p align="center">
+  <b>From problem to production — chat your way through the whole Microsoft Fabric pipeline.</b><br/>
+  A local web app that drives the <a href="https://github.com/microsoft/fabric-task-flows">Fabric Task Flows</a> pipeline end-to-end with a headless AI agent (<b>Claude Code</b> or <b>GitHub Copilot</b>). You describe the business problem in chat; the agent maps an architecture, tests it, and produces CI/CD-ready deployment artifacts — you just approve at the sign-off gate.
+</p>
 
-**From problem to production in minutes. Less guessing. More building.**
+<p align="center">
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue"/>
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-web%20app-009688"/>
+  <img alt="Backends" src="https://img.shields.io/badge/backends-Claude%20Code%20%C2%B7%20GitHub%20Copilot-7c5cff"/>
+  <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"/>
+</p>
 
-https://github.com/user-attachments/assets/3dd74ad6-c634-4b05-b276-d2d1242254a2
+> **Fabric Task Flows Studio** is a fork of Microsoft's [**fabric-task-flows**](https://github.com/microsoft/fabric-task-flows) that adds a full chat-driven web UI on top of the same pipeline engine. The original CLI-and-Copilot workflow is untouched and [documented below](#-built-on-microsoft-fabric-task-flows).
 
-It starts the same way every time — a messy whiteboard and a simple question: *"What can we build?"*
+---
 
-But what if you didn't need to know Microsoft Fabric? What if you only needed to know what your business needs to solve?
+## 📸 What it looks like
 
-With the `@fabric-advisor` agent, you describe the problem. After a few prompts, the whole solution is mapped, everything deployed, and everyone can see how the pieces connect — so you can start building, and stop guessing.
+| Live projects dashboard | Sign-off gate with architecture diagram |
+|:--:|:--:|
+| ![Dashboard](app/docs/images/01-dashboard.png) | ![Sign-off gate](app/docs/images/02-signoff-gate.png) |
+| **Completed run — timeline + deliverables** | **A generated deliverable (editable)** |
+| ![Project view](app/docs/images/03-project-view.png) | ![Deliverable](app/docs/images/04-deliverable.png) |
 
-## Who is this for?
+---
 
-- **Teams with a problem to solve** — who don't have time to become platform experts first
-- **Architects** who want pre-validated patterns instead of starting from scratch
-- **Anyone new to Fabric** who needs opinionated guidance without the guesswork
+## ✨ Highlights
 
-## How it works
+- **Chat-driven** — describe your problem in plain language; the agent does the rest.
+- **Two backends** — pick **Claude Code** or **GitHub Copilot** per project; the app auto-detects what's installed.
+- **One human gate** — review the architecture diagram and **Approve** (deploy live or artifacts-only) or **Revise**.
+- **Live multi-project dashboard** — run several projects at once as background agents and watch them all update, no tab-switching.
+- **Full control** — review / edit / redo any phase, chat anytime, auto-advance toggle, and a **Stop** button that halts a run.
+- **Persistent** — each project's transcript and deliverables are saved; reopen and pick up exactly where you left off.
 
-The agent walks you through seven pipeline phases that chain together automatically, with two moments where you stay in the driver's seat:
+---
 
-| Phase | What happens |
-|-------|-------------|
-| **Discover** | You describe your problem — the agent asks questions and recommends an architecture |
-| **Design** | A detailed architecture, with decision records explaining every trade-off |
-| **Test** | A test plan validates against your acceptance criteria |
-| **Sign-Off** | 🛑 You review the architecture + test plan and either approve or request revisions (max 3 cycles) |
-| **Deploy** | The agent generates dependency-ordered scripts, CI/CD-ready — you pick live deployment or artifacts-only |
-| **Validate** | Post-deployment checks against the test plan, with a remediation loop for any findings |
-| **Document** | Everything synthesizes into a human-readable brief |
+## 🚀 Quick start
 
-## What you get
+### Prerequisites
 
-Each project produces **two deliverables** — one doc, one deployment:
+- **Python 3.11+**
+- At least one agent backend:
+  - **Claude Code** — `npm i -g @anthropic-ai/claude-code` (uses your Claude subscription login)
+  - **GitHub Copilot CLI** — `npm i -g @github/copilot`
 
-```
-_projects/your-project/
-├── docs/project-brief.md     ← ONE human-readable doc (problem, architecture, decisions, validation)
-└── deploy/                   ← CI/CD-ready deployment scripts
-```
-
-No sprawl — one project brief and the scripts to make it real.
-
-## Quick start
-
-**Prerequisites:** Python 3.11+, [GitHub Copilot](https://github.com/features/copilot) with agent mode
+### Install
 
 ```bash
-python _shared/scripts/run-pipeline.py start "My Project" --problem "describe your business problem"
+git clone https://github.com/pugliabi/Fabric-Task-Flow-Studios.git
+cd Fabric-Task-Flow-Studios
+python -m venv .venv
+# Windows:  .venv\Scripts\activate      macOS/Linux:  source .venv/bin/activate
+pip install -r app/requirements-app.txt
 ```
 
-The pipeline runner generates agent prompts — paste each into Copilot chat. Use `advance` and `next` to progress through phases. See [`_shared/workflow-guide.md`](_shared/workflow-guide.md) for the full pipeline reference.
+### Start
 
-## Copilot hooks (policy + observability)
+```bash
+python run-app.py
+```
 
-This repository includes optional GitHub Copilot hooks in `.github/hooks/` to enforce pipeline guardrails and capture runtime audit events.
+That installs FastAPI/uvicorn if needed, launches the server, and opens **http://127.0.0.1:8000** in your browser.
+Options: `--port 8000`, `--host 127.0.0.1`, `--no-reload`, `--no-browser`.
 
-- `01-policy.json` — `preToolUse` policy checks (for example, blocks direct `pipeline-state.json` edits and destructive commands)
-- `02-observability.json` — `sessionStart`, `userPromptSubmitted`, `postToolUse`, `errorOccurred`, `sessionEnd` logging
-- Hook scripts live in `.github/hooks/scripts/`
-- Runtime logs are written to `.github/hooks/logs/` (gitignored)
+**Windows:** running `python run-app.py` once registers a **Start Menu** launcher (`fabric-studio.bat`) — after that just press <kbd>⊞ Win</kbd> and type *"Fabric Task Flows Studio"*, or run `fabric-studio` in any terminal.
 
-These hooks complement, but do not replace, CI checks in `.github/workflows/ci.yml`.
+---
 
-## What's inside
+## 🧭 How to use it
+
+1. **Describe your problem.** On the home page, enter a project name and a one-paragraph problem statement, pick a backend, and click **Start pipeline**.
+2. **Watch it work.** The agent streams its thinking and tool calls into the chat while it discovers signals, selects a task flow, designs the architecture, and writes a test plan. The sidebar timeline shows phase progress.
+3. **Approve at the 🛑 sign-off gate.** You get a plain-language summary plus the architecture diagram, and two buttons:
+   - **Approve · Deploy live** — generates and runs the deployment against a Fabric workspace (needs `az login`).
+   - **Approve · Artifacts only** — generates the CI/CD-ready scripts without deploying.
+   - Or type feedback and **Revise** (up to 3 cycles).
+4. **Get your deliverables.** Everything lands in the sidebar — `discovery-brief`, `architecture-handoff`, `test-plan`, `deployment-handoff`, `validation-report`, and a synthesized `project-brief`. Click any to read it rendered, or **Edit** it inline.
+
+**Along the way you can:** chat with the agent anytime · **review / edit / redo** any phase from the timeline · toggle **auto-advance** off to step phase-by-phase · **Stop** a run · and run **multiple projects in parallel** from the dashboard.
+
+📖 **Full technical documentation:** [`app/README.md`](app/README.md) — architecture, API reference, event streaming, concurrency model, and more.
+
+---
+
+## 📦 What you get per project
+
+```
+_projects/your-project/          (local only — gitignored)
+├── docs/                         ← discovery, architecture, test plan, validation, project brief
+├── deploy/                       ← CI/CD-ready deployment scripts + workspace definitions
+└── .studio/history.jsonl         ← saved chat transcript (so you can pick up where you left off)
+```
+
+---
+
+## 🏗️ Built on Microsoft Fabric Task Flows
+
+The Studio is a UI layer over Microsoft's **[fabric-task-flows](https://github.com/microsoft/fabric-task-flows)** — the same `@fabric-advisor` agent, skills, registries, and templates power everything under the hood. The original workflow (drive the pipeline from the CLI + Copilot chat) still works exactly as before.
 
 | Resource | Description |
 |----------|-------------|
-| [**13 Task Flows**](task-flows.md) | Pre-defined architectures for common scenarios — batch, streaming, hybrid, ML, API, governance, and more |
+| [**13 Task Flows**](task-flows.md) | Pre-defined architectures — batch, streaming, hybrid, ML, API, governance, and more |
 | [**7 Decision Guides**](decisions/_index.md) | Opinionated guidance on the choices that matter |
 | [**Deployment Diagrams**](diagrams/_index.md) | Visual maps showing how pieces connect and deploy in order |
 | [**Item Registry**](_shared/registry/item-type-registry.json) | 45 Fabric item types with API paths, CI/CD strategies, and deployment order |
 | [**Templates**](_shared/templates/) | Definition files for every deployable Fabric item type |
+| [**Workflow Guide**](_shared/workflow-guide.md) | The full CLI pipeline reference (`run-pipeline.py`) |
 
-## Repository structure
+### Repository structure
 
 ```
+app/                    → Fabric Task Flows Studio (the web app)  ★ this fork
+run-app.py              → Studio launcher
+fabric-studio.bat       → Windows Start Menu launcher
 .github/agents/         → The @fabric-advisor orchestrator
 .github/skills/         → Composable skills for each phase
 decisions/              → Decision guides (the "why" behind each choice)
@@ -92,10 +129,10 @@ _shared/tests/          → Test suite
 _projects/              → Your project workspaces (gitignored)
 ```
 
-## Contributing
+---
 
-We welcome contributions — especially to the **[Item Type Registry](_shared/registry/item-type-registry.json)**. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on adding task flows, decision guides, skills, and more.
+## Contributing & License
 
-## License
+Contributions welcome — especially to the **[Item Type Registry](_shared/registry/item-type-registry.json)**. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-[MIT](LICENSE)
+Licensed [MIT](LICENSE). Original project © Microsoft. Studio additions maintained in this fork.
