@@ -17,8 +17,9 @@
 > **Fabric Task Flows Studio** is a fork of Microsoft's [**fabric-task-flows**](https://github.com/microsoft/fabric-task-flows) that adds a full chat-driven web UI on top of the same pipeline engine. The original CLI-and-Copilot workflow is untouched and [documented below](#-built-on-microsoft-fabric-task-flows).
 
 <p align="center">
-  <img src="app/docs/images/01-dashboard.png" alt="Fabric Task Flows Studio — projects dashboard" width="960"/>
+  <img src="app/docs/images/demo.gif" alt="Fabric Task Flows Studio in action — the agent streams its work through the pipeline" width="100%"/>
 </p>
+<p align="center"><i>A live run: the agent streams its reasoning and tool calls as it works through the pipeline.</i></p>
 
 ---
 
@@ -26,24 +27,28 @@
 
 Describe a problem, watch the agent build the architecture, approve once, and collect your deliverables.
 
-**1 · Start from the dashboard** *(shown above)* — enter a project name and a one-line problem, pick a backend, and click **Start pipeline**. You can run several projects at once and watch them all update live.
+**1 · Start from the dashboard** — enter a project name and a one-line problem, pick a backend, and click **Start pipeline**. You can run several projects at once and watch them all update live.
+
+<p align="center">
+  <img src="app/docs/images/01-dashboard.png" alt="Projects dashboard" width="100%"/>
+</p>
 
 **2 · Approve at the 🛑 sign-off gate** — review the architecture diagram and the plain-language summary, then **Approve** (deploy live or artifacts-only), or type feedback to **Revise**.
 
 <p align="center">
-  <img src="app/docs/images/02-signoff-gate.png" alt="Sign-off gate with architecture diagram" width="960"/>
+  <img src="app/docs/images/02-signoff-gate.png" alt="Sign-off gate with architecture diagram" width="100%"/>
 </p>
 
 **3 · Watch it finish** — the phase timeline fills in and every deliverable lands in the sidebar.
 
 <p align="center">
-  <img src="app/docs/images/03-project-view.png" alt="Completed run — timeline and deliverables" width="960"/>
+  <img src="app/docs/images/03-project-view.png" alt="Completed run — timeline and deliverables" width="100%"/>
 </p>
 
 **4 · Open any deliverable** — read it rendered, or **Edit** it inline and save.
 
 <p align="center">
-  <img src="app/docs/images/04-deliverable.png" alt="A generated deliverable, editable" width="960"/>
+  <img src="app/docs/images/04-deliverable.png" alt="A generated deliverable, editable" width="100%"/>
 </p>
 
 ---
