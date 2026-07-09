@@ -51,8 +51,8 @@
 ### Install
 
 ```bash
-git clone https://github.com/pugliabi/Fabric-Task-Flow-Studios.git
-cd Fabric-Task-Flow-Studios
+git clone https://github.com/pugliabi/Fabric-Task-Flow-Studio.git
+cd Fabric-Task-Flow-Studio
 python -m venv .venv
 # Windows:  .venv\Scripts\activate      macOS/Linux:  source .venv/bin/activate
 pip install -r app/requirements-app.txt
