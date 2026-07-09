@@ -21,6 +21,10 @@
 </p>
 <p align="center"><i>Create a project → watch the agent work · review &amp; edit any phase (auto-advance off) · resume a run anytime.</i></p>
 
+<p align="center"><b>▶ The original Task Flows overview (from Microsoft)</b></p>
+
+https://github.com/user-attachments/assets/3dd74ad6-c634-4b05-b276-d2d1242254a2
+
 ---
 
 ## 📸 A quick walkthrough
