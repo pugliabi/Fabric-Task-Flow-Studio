@@ -17,9 +17,9 @@
 > **Fabric Task Flows Studio** is a fork of Microsoft's [**fabric-task-flows**](https://github.com/microsoft/fabric-task-flows) that adds a full chat-driven web UI on top of the same pipeline engine. The original CLI-and-Copilot workflow is untouched and [documented below](#-built-on-microsoft-fabric-task-flows).
 
 <p align="center">
-  <img src="app/docs/images/demo.gif" alt="Fabric Task Flows Studio in action — the agent streams its work through the pipeline" width="100%"/>
+  <img src="app/docs/images/demo.gif" alt="Fabric Task Flows Studio in action — create a project, review and edit any phase, resume anytime" width="100%"/>
 </p>
-<p align="center"><i>A live run: the agent streams its reasoning and tool calls as it works through the pipeline.</i></p>
+<p align="center"><i>Create a project → watch the agent work · review &amp; edit any phase (auto-advance off) · resume a run anytime.</i></p>
 
 ---
 
