@@ -48,26 +48,33 @@
   - **Claude Code** — `npm i -g @anthropic-ai/claude-code` (uses your Claude subscription login)
   - **GitHub Copilot CLI** — `npm i -g @github/copilot`
 
-### Install
+### Get it
 
 ```bash
 git clone https://github.com/pugliabi/Fabric-Task-Flow-Studio.git
 cd Fabric-Task-Flow-Studio
+```
+
+### Run it — one command from the repo root
+
+| Platform | Command |
+|----------|---------|
+| **Windows** | double-click **`start.bat`** (or run `start.bat` / `fabric-studio` in a terminal) |
+| **macOS / Linux** | `./start.sh` |
+
+`start.bat` / `start.sh` create the virtual environment, install dependencies, launch the server, and open **http://127.0.0.1:8000** automatically. First run takes a few seconds to set up; later runs start instantly.
+
+<details>
+<summary>Manual / advanced start</summary>
+
+```bash
 python -m venv .venv
 # Windows:  .venv\Scripts\activate      macOS/Linux:  source .venv/bin/activate
 pip install -r app/requirements-app.txt
+python run-app.py            # flags: --port 8000  --host 127.0.0.1  --no-reload  --no-browser
 ```
-
-### Start
-
-```bash
-python run-app.py
-```
-
-That installs FastAPI/uvicorn if needed, launches the server, and opens **http://127.0.0.1:8000** in your browser.
-Options: `--port 8000`, `--host 127.0.0.1`, `--no-reload`, `--no-browser`.
-
-**Windows:** running `python run-app.py` once registers a **Start Menu** launcher (`fabric-studio.bat`) — after that just press <kbd>⊞ Win</kbd> and type *"Fabric Task Flows Studio"*, or run `fabric-studio` in any terminal.
+`run-app.py` also installs FastAPI/uvicorn if they're missing. On **Windows**, the first run registers a **Start Menu** launcher — press <kbd>⊞ Win</kbd> and type *"Fabric Task Flows Studio"*.
+</details>
 
 ---
 
@@ -81,13 +88,32 @@ Options: `--port 8000`, `--host 127.0.0.1`, `--no-reload`, `--no-browser`.
    - Or type feedback and **Revise** (up to 3 cycles).
 4. **Get your deliverables.** Everything lands in the sidebar — `discovery-brief`, `architecture-handoff`, `test-plan`, `deployment-handoff`, `validation-report`, and a synthesized `project-brief`. Click any to read it rendered, or **Edit** it inline.
 
-**Along the way you can:** chat with the agent anytime · **review / edit / redo** any phase from the timeline · toggle **auto-advance** off to step phase-by-phase · **Stop** a run · and run **multiple projects in parallel** from the dashboard.
+### The full toolkit
 
-📖 **Full technical documentation:** [`app/README.md`](app/README.md) — architecture, API reference, event streaming, concurrency model, and more.
+- **Projects dashboard (home)** — a live card per project with a mini 7-phase progress bar, status (● running / 🛑 sign-off / complete / idle), a `3/7` phase count, and the project's **latest activity line** (updates even for background runs). A header strip summarizes running / at-sign-off / complete counts. Polls every ~2.5s (paused when the tab is hidden). Each card has **Open / View live** and, for running ones, **⏹ Stop**.
+- **Chat anytime** — the composer is always live. Ask a question or request a tweak; the agent answers in the project's context. With **Claude Code** the session is resumed across turns (`--resume`), so it remembers the conversation.
+- **Per-phase actions** — hover any phase in the timeline: 📄 **Review** the deliverable · ✏️ **Edit** it inline and save · ↻ **Redo** from that phase (resets it + later phases and re-runs).
+- **Auto-advance toggle** — **On** (default): phases run back-to-back to the sign-off gate. **Off**: pause after each phase to review, then click **Continue**. Gates and completion always stop regardless.
+- **Continue** — reopening an in-progress or paused project shows a *Continue pipeline* button that resumes from the current phase.
+- **Check / Heal** — *Check* verifies every completed phase's output and state consistency (read-only); *Heal* runs `reconcile` to repair drift from file evidence.
+- **Activity indicator** — the instant you do anything, a "*<backend> is working…*" bar appears above the composer and stays until the agent responds — you always know something is processing.
+- **Stop** — halt a running flow from the working bar, the sidebar, or a project card. Stop kills the agent's whole process tree, cancels the drive loop, and leaves the phase re-runnable.
+- **Persistent chat history** — every project's transcript is saved to `_projects/<p>/.studio/history.jsonl`. Reopen a project (even after a restart) and the full conversation replays, then the live state re-syncs.
+- **Resizable chat box** — drag the handle above the composer to resize the message box (double-click to reset; the size is remembered).
+- **Pinned layout** — the sidebar (phases + deliverables) and the composer/working bar stay fixed; only the transcript scrolls, so scrolling back never hides them.
 
----
+### Backends — who drives the agent
 
-## 📦 What you get per project
+Pick one on the start screen (the app auto-detects what's installed):
+
+| Backend | How it's driven | Install |
+|---------|-----------------|---------|
+| **Claude Code** | `claude -p --output-format stream-json --permission-mode bypassPermissions`. A preamble tells it to read `.github/agents/fabric-advisor.agent.md` + the phase's `SKILL.md` and act as the orchestrator. | `npm i -g @anthropic-ai/claude-code` |
+| **GitHub Copilot** | `copilot -p - -s --allow-all-tools --no-ask-user --agent fabric-advisor`. Loads the real `fabric-advisor` agent natively. | `npm i -g @github/copilot` |
+
+> **Claude auth:** the Claude backend uses your **Claude Code subscription login**. If `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` is set in your environment, Claude Code would otherwise prefer that pay-as-you-go key (which can fail with *"credit balance too low"*), so the runner strips it from the agent subprocess. Set `FTF_USE_API_KEY=1` to force the API key instead.
+
+### What you get per project
 
 ```
 _projects/your-project/          (local only — gitignored)
@@ -95,6 +121,74 @@ _projects/your-project/          (local only — gitignored)
 ├── deploy/                       ← CI/CD-ready deployment scripts + workspace definitions
 └── .studio/history.jsonl         ← saved chat transcript (so you can pick up where you left off)
 ```
+
+---
+
+<details>
+<summary><h2>🔧 Under the hood (architecture, API, concurrency)</h2></summary>
+
+The Studio wraps the exact same pipeline library the CLI uses (`_shared/scripts/run-pipeline.py`), so pipeline semantics and state ownership are unchanged. The app only **reads** state and docs, calls the same `advance` / `start` functions, and streams everything into a chat UI. The agent's only job per phase is to write that phase's doc file; the app owns every `advance` and the deterministic fast-forward. Nothing edits `pipeline-state.json` except the pipeline library.
+
+### Components
+
+```
+start.bat / start.sh       → clone-and-run launchers (venv + deps + run)
+run-app.py                 → launcher (ensures deps, forces UTF-8, runs uvicorn)
+fabric-studio.bat          → Windows Start Menu launcher
+app/
+  server.py                → FastAPI: REST + SSE, static serving, in-memory sessions
+  orchestrator.py          → the drive loop: run agent per phase → advance → stop at gate
+  runners.py               → AgentRunner + ClaudeCodeRunner / CopilotRunner, backend detection
+  pipeline_api.py          → thin wrapper over _shared/lib (start/advance/status/prompts/docs)
+  static/                  → self-contained chat UI + favicon
+```
+
+### What happens in a run
+
+1. **Start** → project is scaffolded, signal mapper runs.
+2. **Discover** → the agent writes `docs/discovery-brief.md`. The app advances, which deterministically fast-forwards Design + Test Plan and lands on the gate.
+3. **Sign-off (human gate)** → the app shows the diagram + summary and the approve/revise controls.
+4. **Artifacts-only** → the app fast-forwards Deploy → Validate → Document deterministically → **complete**. **Live** → the agent runs the deploy / validate / document phases.
+
+### Concurrency — multiple projects at once
+
+Each project is an independent `Session` with its own agent process and event stream, so several run **in parallel**. The agent CLIs run in worker threads, and the synchronous pipeline-library calls (which spawn their own generator subprocesses) are offloaded off the event loop via `asyncio.to_thread`, serialized by a lock because that library isn't thread-safe. One project's phase running never freezes the UI for the others.
+
+> Browser note: HTTP/1.1 allows ~6 live connections per origin and each open project tab holds one SSE connection, so keep it to a handful of simultaneous tabs (the dashboard lets you watch many from a single connection).
+
+### How the chat stream works
+
+Each session fans events out to per-connection subscribers backed by a bounded event log. The `/api/projects/{p}/events` SSE endpoint replays what a (re)connecting client missed via `Last-Event-ID`, then streams live `data: {json}` frames — so reconnects never duplicate or drop messages.
+
+### API reference
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET  | `/api/backends` | Which CLIs are installed |
+| GET  | `/api/projects` | All projects + live status (running, phase, activity) |
+| POST | `/api/start` | `{name, problem, backend}` → scaffold + start driving |
+| POST | `/api/projects/{p}/resume` | `{backend}` → re-drive / continue |
+| POST | `/api/projects/{p}/approve` | `{deploy_mode: live\|artifacts_only}` |
+| POST | `/api/projects/{p}/revise` | `{feedback}` |
+| POST | `/api/projects/{p}/chat` | `{message}` → chat with the agent |
+| POST | `/api/projects/{p}/reset` | `{phase, rerun}` → go back / redo a phase |
+| POST | `/api/projects/{p}/mode` | `{auto_advance}` → pacing toggle |
+| POST | `/api/projects/{p}/check` | `{heal}` → verify (and optionally reconcile) |
+| POST | `/api/projects/{p}/stop` | halt a running flow |
+| GET  | `/api/projects/{p}/status` | current state + phases + docs |
+| GET  | `/api/projects/{p}/doc?name=` | read one `docs/*.md` |
+| POST | `/api/projects/{p}/doc` | `{name, content}` → save an edited deliverable |
+| GET  | `/api/projects/{p}/events` | SSE chat stream (supports `Last-Event-ID`) |
+
+Deep-link: `?open=<project>` opens a project directly; add `&doc=<file.md>` to open a deliverable.
+
+### Notes
+
+- **UTF-8 is forced** (`PYTHONUTF8`) — Windows cp1252 otherwise corrupts box/arrow glyphs in diagrams and agent output.
+- Sessions live in memory and reset when the server restarts — pipeline state and the saved transcript on disk are the source of truth, so just reopen the project.
+- Live deployment still requires `az login` in your own terminal, exactly as the CLI does.
+
+</details>
 
 ---
 
@@ -114,9 +208,9 @@ The Studio is a UI layer over Microsoft's **[fabric-task-flows](https://github.c
 ### Repository structure
 
 ```
-app/                    → Fabric Task Flows Studio (the web app)  ★ this fork
+start.bat / start.sh    → clone-and-run launchers for the Studio  ★ this fork
+app/                    → Fabric Task Flows Studio (the web app)   ★ this fork
 run-app.py              → Studio launcher
-fabric-studio.bat       → Windows Start Menu launcher
 .github/agents/         → The @fabric-advisor orchestrator
 .github/skills/         → Composable skills for each phase
 decisions/              → Decision guides (the "why" behind each choice)
