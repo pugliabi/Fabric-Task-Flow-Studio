@@ -31,6 +31,10 @@ desktop.ini
 # Projects (per-customer data — local only)
 projects/
 
+# Studio web app — per-run agent prompt scratch + chat history
+_projects/**/.agent-runs/
+_projects/**/.studio/
+
 # Session-local learnings (not committed)
 _shared/learnings.md
 

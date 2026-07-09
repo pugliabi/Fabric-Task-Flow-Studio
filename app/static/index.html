@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fabric Task Flows Studio</title>
+<style>
+  :root{
+    --bg:#0d1017; --panel:#141924; --panel-2:#1b2230; --line:#26303f;
+    --text:#e6edf3; --muted:#8b98a9; --accent:#4c8dff; --accent-2:#7c5cff;
+    --green:#3fb950; --amber:#d29922; --red:#f85149; --chip:#222c3c;
+    --user:#1c2b44; --radius:12px; --mono:"Cascadia Code",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5}
+  button{font-family:inherit;cursor:pointer}
+  a{color:var(--accent)}
+  .hidden{display:none!important}
+  ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#2a3446;border-radius:6px}
+
+  /* ---------- Home ---------- */
+  #home{max-width:940px;margin:0 auto;padding:48px 24px 64px;display:flex;flex-direction:column;gap:24px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand .logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:grid;place-items:center;font-weight:800;color:#fff;font-size:18px}
+  .brand h1{font-size:21px;margin:0}
+  .brand p{margin:2px 0 0;color:var(--muted);font-size:13px}
+  .grid2{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;align-items:start}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+  .card h2{margin:0 0 4px;font-size:15px}
+  .card .sub{color:var(--muted);font-size:12.5px;margin:0 0 16px}
+  label.fld{display:block;margin-bottom:14px}
+  label.fld span{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px}
+  input[type=text],textarea{width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    border-radius:9px;padding:11px 12px;font-size:14px;font-family:inherit;resize:vertical}
+  textarea{min-height:84px}
+  input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  .backends{display:flex;gap:12px}
+  .backend{flex:1;background:var(--panel-2);border:1.5px solid var(--line);border-radius:10px;padding:13px;transition:.12s}
+  .backend:hover{border-color:#38465a}
+  .backend.sel{border-color:var(--accent);background:#16233b}
+  .backend.disabled{opacity:.5;cursor:not-allowed}
+  .backend .bname{font-weight:600;display:flex;align-items:center;gap:8px}
+  .backend .dot{width:8px;height:8px;border-radius:50%}
+  .backend .meta{color:var(--muted);font-size:11.5px;margin-top:6px}
+  .backend code{font-family:var(--mono);font-size:11px;color:#a9c7ff}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:11px 18px;font-weight:600;font-size:14px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+  .btn.danger{background:var(--red);color:#fff}
+  .btn.sm{padding:7px 12px;font-size:12.5px}
+  .row{display:flex;gap:10px;align-items:center}
+  .dash-head{display:flex;align-items:center;justify-content:space-between;margin:6px 0 2px}
+  .dash-head h2{margin:0;font-size:16px}
+  .dash-head .meta{color:var(--muted);font-size:12.5px;display:flex;gap:10px;align-items:center}
+  .dash-head .st{display:inline-flex;align-items:center;gap:5px}
+  .dash-head .st b{color:var(--text)}
+  .projgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+  .pcard{background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:14px;cursor:pointer;transition:.12s;display:flex;flex-direction:column;gap:9px}
+  .pcard:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .pcard.running{border-color:#2b3d5c}
+  .pc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+  .pcard .pn{font-weight:700}
+  .pcard .pf{color:var(--muted);font-size:11.5px;margin-top:1px}
+  .pdots{display:flex;gap:5px;align-items:center}
+  .pdots i{width:20px;height:5px;border-radius:3px;background:#2f3a4c}
+  .pdots i.complete{background:var(--green)}
+  .pdots i.in_progress{background:var(--accent);animation:pulse 1.2s infinite}
+  .pact{font-size:11.5px;color:#9fb4cc;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:15px}
+  .pc-actions{display:flex;gap:8px;margin-top:2px}
+  .pc-actions .btn{flex:1}
+  .pill{font-size:11px;padding:2px 8px;border-radius:20px;background:var(--chip);color:var(--muted);white-space:nowrap}
+  .pill.done{background:#122b1c;color:var(--green)}
+  .pill.gate{background:#2b2411;color:var(--amber)}
+  .pill.run{background:#12233b;color:#6ea8ff}
+  .pill.run .rd{display:inline-block;width:6px;height:6px;border-radius:50%;background:#6ea8ff;margin-right:4px;animation:pulse 1s infinite}
+  .empty{color:var(--muted);font-size:12.5px}
+
+  /* ---------- App shell ---------- */
+  /* height:100vh + overflow:hidden on the shell, and min-height:0 on the scroll
+     columns, so ONLY #transcript scrolls — the sidebar (phases/items) and the
+     composer/working bar stay pinned. */
+  #app{display:grid;grid-template-columns:300px 1fr;height:100vh;overflow:hidden}
+  aside{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+  aside .top{padding:15px 16px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+  aside .pj{font-weight:700;font-size:15px}
+  aside .tf{color:var(--muted);font-size:12px;margin-top:2px}
+  .timeline{padding:12px 12px;overflow:auto;flex:0 0 auto}
+  .phase{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:8px;font-size:13px}
+  .phase:hover{background:var(--panel-2)}
+  .phase .ic{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-size:11px;flex:0 0 auto}
+  .phase.complete .ic{background:var(--green);border-color:var(--green);color:#04220d}
+  .phase.in_progress .ic{border-color:var(--accent);color:var(--accent);animation:pulse 1.3s infinite}
+  .phase.pending{color:var(--muted)}
+  .phase .lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .phase .acts{display:flex;gap:2px;opacity:0;transition:.1s}
+  .phase:hover .acts{opacity:1}
+  .iconbtn{background:none;border:none;color:var(--muted);padding:3px 5px;border-radius:6px;font-size:13px;line-height:1}
+  .iconbtn:hover{background:var(--line);color:var(--text)}
+  .gatetag{font-size:9.5px;color:var(--amber);border:1px solid #4a3d16;border-radius:5px;padding:0 4px}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .modebar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+  .modebar .lab{color:var(--muted)}
+  .switch{position:relative;width:38px;height:21px;flex:0 0 auto}
+  .switch input{opacity:0;width:0;height:0}
+  .switch .sl{position:absolute;inset:0;background:#33405a;border-radius:20px;transition:.15s;cursor:pointer}
+  .switch .sl:before{content:"";position:absolute;height:15px;width:15px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.15s}
+  .switch input:checked + .sl{background:var(--accent)}
+  .switch input:checked + .sl:before{transform:translateX(17px)}
+  .continue{margin:8px 12px 10px;}
+  .continue .btn{width:100%}
+  .docs{padding:12px 16px;border-top:1px solid var(--line);overflow:auto;flex:1;min-height:0}
+  .docs h3{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:0 0 8px}
+  .doc{display:flex;align-items:center;gap:6px;width:100%;text-align:left;background:none;border:none;color:var(--text);padding:6px 8px;border-radius:7px;font-size:12.5px}
+  .doc:hover{background:var(--panel-2)}
+  aside .foot{padding:10px 12px;border-top:1px solid var(--line);display:flex;gap:8px}
+  aside .foot .btn{flex:1}
+
+  main{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+  #transcript{flex:1;min-height:0;overflow-y:auto;padding:22px 0}
+  .wrap{max-width:820px;margin:0 auto;padding:0 24px}
+  .msg{display:flex;gap:12px;margin-bottom:16px}
+  .msg .av{width:28px;height:28px;border-radius:7px;flex:0 0 auto;display:grid;place-items:center;font-size:12px;font-weight:700}
+  .msg.assistant .av{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff}
+  .msg.system .av{background:var(--panel-2);color:var(--muted)}
+  .msg.user{flex-direction:row-reverse}
+  .msg.user .av{background:var(--user);color:#cfe0ff}
+  .bubble{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;max-width:100%;overflow-x:auto}
+  .msg.user .bubble{background:var(--user);border-color:#2a3f5f}
+  .msg.system .bubble{background:transparent;border:none;padding:6px 0;color:var(--muted)}
+  .bubble.streaming::after{content:"▍";color:var(--accent);animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .phase-head{display:flex;align-items:center;gap:8px;margin:6px auto 12px;max-width:820px;padding:0 24px}
+  .phase-head .bar{flex:1;height:1px;background:var(--line)}
+  .phase-head .lbl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  .tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .tool{font-family:var(--mono);font-size:11px;background:var(--chip);border:1px solid var(--line);color:#9fb4cc;padding:3px 8px;border-radius:6px}
+
+  .md h1,.md h2,.md h3{margin:14px 0 8px;line-height:1.3}
+  .md h1{font-size:19px}.md h2{font-size:16px}.md h3{font-size:14px}
+  .md p{margin:8px 0}.md ul,.md ol{margin:8px 0;padding-left:22px}
+  .md code{font-family:var(--mono);font-size:12.5px;background:var(--panel-2);padding:1px 5px;border-radius:5px}
+  .md pre{background:#0a0d14;border:1px solid var(--line);border-radius:9px;padding:12px;overflow:auto}
+  .md pre code{background:none;padding:0;font-size:12px;line-height:1.45}
+  .md table{border-collapse:collapse;margin:10px 0;font-size:12.5px;display:block;overflow:auto}
+  .md th,.md td{border:1px solid var(--line);padding:6px 10px;text-align:left}
+  .md th{background:var(--panel-2)}
+  .md blockquote{border-left:3px solid var(--line);margin:8px 0;padding:2px 12px;color:var(--muted)}
+
+  .gate{max-width:820px;margin:6px auto 18px;padding:0 24px}
+  .gate .box{background:var(--panel);border:1px solid var(--accent);border-radius:14px;overflow:hidden}
+  .gate .bh{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .gate .bh .t{font-weight:700}
+  .gate .facts{display:flex;gap:18px;flex-wrap:wrap;padding:12px 16px;color:var(--muted);font-size:12.5px}
+  .gate .facts b{color:var(--text)}
+  .gate pre.diagram{margin:0;background:#0a0d14;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 16px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.4;color:#cfe0ff}
+  .gate .actions{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+  .gate .approve-row{display:flex;gap:10px;flex-wrap:wrap}
+  .gate .approve-row .btn{flex:1;min-width:180px}
+  .gate .btn.artifacts{background:var(--panel-2);border:1px solid var(--line);color:var(--text)}
+  .gate .revise{display:flex;gap:8px}.gate .revise textarea{min-height:44px}
+  .rev-note{font-size:11.5px;color:var(--muted)}
+
+  .composer{border-top:1px solid var(--line);background:var(--panel);padding:0 0 14px;flex:0 0 auto;position:relative}
+  .composer-grip{height:14px;display:flex;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none}
+  .composer-grip::before{content:"";width:46px;height:4px;border-radius:3px;background:var(--line);transition:.12s}
+  .composer-grip:hover::before,.composer-grip.drag::before{background:var(--accent);width:64px}
+  .composer .wrap{display:flex;gap:10px;align-items:stretch}
+  .composer textarea{height:72px;min-height:52px;max-height:none;font-size:14.5px;padding:12px 14px;resize:none}
+  .composer #sendBtn{align-self:stretch;padding:0 22px}
+  .composer .hint{color:var(--muted);font-size:11px;text-align:center;margin-top:6px}
+  .working{max-width:820px;margin:0 auto 8px;padding:0 24px;display:flex;align-items:center;gap:10px}
+  .working .card2{display:flex;align-items:center;gap:10px;background:#16233b;border:1px solid var(--accent);border-radius:9px;padding:7px 12px;font-size:12.5px;color:#cfe0ff;width:100%}
+  .working .dots{display:inline-flex;gap:3px}
+  .working .dots i{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:bd 1s infinite}
+  .working .dots i:nth-child(2){animation-delay:.15s}.working .dots i:nth-child(3){animation-delay:.3s}
+  @keyframes bd{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+  .working .stopmini{margin-left:auto;background:var(--red);color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:600}
+  .thinking-msg .bubble{color:var(--muted);font-style:italic}
+
+  #drawer{position:fixed;top:0;right:0;height:100vh;width:min(720px,94vw);background:var(--panel);border-left:1px solid var(--line);transform:translateX(100%);transition:transform .18s;z-index:20;display:flex;flex-direction:column}
+  #drawer.open{transform:none}
+  #drawer .dh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);gap:10px}
+  #drawer .dh .dn{font-family:var(--mono);font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #drawer .dc{overflow:auto;padding:16px 20px;flex:1}
+  #drawer textarea#editArea{width:100%;height:100%;min-height:100%;background:#0a0d14;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:12px;font-family:var(--mono);font-size:12.5px;line-height:1.5;resize:none}
+  .xbtn{background:none;border:none;color:var(--muted);font-size:20px;line-height:1}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:10px 16px;border-radius:9px;z-index:40;box-shadow:0 8px 24px rgba(0,0,0,.4);max-width:80vw}
+</style>
+</head>
+<body>
+
+<!-- ============ HOME ============ -->
+<section id="home">
+  <div class="brand">
+    <div class="logo">F</div>
+    <div><h1>Fabric Task Flows Studio</h1><p>From problem to production — chat your way through the whole pipeline.</p></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>New project</h2>
+      <p class="sub">Describe a business problem. The agent maps an architecture, tests it, and deploys — you approve at sign-off.</p>
+      <label class="fld"><span>Project name</span>
+        <input id="pname" type="text" placeholder="e.g. Farm Fleet Telemetry" autocomplete="off"/></label>
+      <label class="fld"><span>Problem statement</span>
+        <textarea id="pproblem" placeholder="e.g. We stream sensor data from 400 tractors and want hourly utilization dashboards and anomaly alerts."></textarea></label>
+      <label class="fld"><span>Backend — who drives the agent</span></label>
+      <div class="backends" id="backends"></div>
+      <div class="row" style="margin-top:16px">
+        <button class="btn" id="startBtn" disabled>Start pipeline →</button>
+        <span id="startMsg" style="color:var(--muted);font-size:12.5px"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Start tips</h2>
+      <p class="sub">Each project runs as its own background agent. You can run several at once and watch them all here — no tab-switching.</p>
+      <ul style="color:var(--muted);font-size:12.5px;margin:0;padding-left:18px;line-height:1.9">
+        <li>Approve at the 🛑 sign-off gate (live deploy or artifacts-only)</li>
+        <li>Review · edit · redo any phase from the timeline</li>
+        <li>Chat with the agent anytime; ⏹ Stop halts a run</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="dash-head">
+    <h2>Projects</h2>
+    <div class="meta" id="dashMeta"></div>
+  </div>
+  <div class="projgrid" id="projgrid"><div class="empty">No projects yet.</div></div>
+</section>
+
+<!-- ============ APP ============ -->
+<section id="app" class="hidden">
+  <aside>
+    <div class="top">
+      <div><div class="pj" id="pjName">—</div><div class="tf" id="pjFlow">—</div></div>
+      <button class="iconbtn" title="Back to projects" id="homeBtn" style="font-size:16px">⌂</button>
+    </div>
+    <div class="modebar">
+      <span class="lab" title="On: phases run back-to-back to the sign-off gate. Off: pause after each phase to review.">Auto-advance phases</span>
+      <label class="switch"><input type="checkbox" id="autoToggle" checked><span class="sl"></span></label>
+    </div>
+    <div class="continue hidden" id="continueWrap"><button class="btn sm" id="continueBtn">▶ Continue pipeline</button></div>
+    <div class="continue hidden" id="stopWrap"><button class="btn sm danger" id="stopBtn">⏹ Stop task flow</button></div>
+    <div class="timeline" id="timeline"></div>
+    <div class="docs">
+      <h3>Deliverables</h3>
+      <div id="docList"><div class="empty">Generated as phases complete…</div></div>
+    </div>
+    <div class="foot">
+      <button class="btn ghost sm" id="checkBtn" title="Verify every completed phase">🔎 Check</button>
+      <button class="btn ghost sm" id="healBtn" title="Reconcile state from files">🩹 Heal</button>
+    </div>
+    <div class="foot" style="border-top:none;padding-top:0">
+      <span id="backendBadge" style="color:var(--muted);font-size:11px;align-self:center"></span>
+    </div>
+  </aside>
+
+  <main>
+    <div id="transcript"><div class="wrap" id="stream"></div></div>
+    <div class="composer">
+      <div class="composer-grip" id="composerGrip" title="Drag to resize the message box"></div>
+      <div class="working hidden" id="workingBar">
+        <div class="card2"><span class="dots"><i></i><i></i><i></i></span><span id="workingText">Working…</span>
+          <button class="stopmini" id="stopMini">⏹ Stop</button></div>
+      </div>
+      <div class="wrap">
+        <textarea id="composer" placeholder="Message the agent anytime — ask a question, request a tweak…"></textarea>
+        <button class="btn" id="sendBtn">Send</button>
+      </div>
+      <div class="hint" id="composerHint">Chat with the agent anytime. Phases run automatically; you approve at the sign-off gate.</div>
+    </div>
+  </main>
+</section>
+
+<!-- doc drawer -->
+<div id="drawer">
+  <div class="dh">
+    <span class="dn" id="drawerName">doc.md</span>
+    <button class="btn ghost sm" id="editBtn">Edit</button>
+    <button class="btn sm hidden" id="saveBtn">Save</button>
+    <button class="btn ghost sm hidden" id="cancelBtn">Cancel</button>
+    <button class="xbtn" id="drawerClose">✕</button>
+  </div>
+  <div class="dc md" id="drawerBody"></div>
+</div>
+
+<script>
+const $ = (s,r=document)=>r.querySelector(s);
+const el = (t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+let BACKENDS={}, chosenBackend=null, PROJECT=null, es=null;
+let streamingBubble=null, currentPhase=null;
+let ST={complete:false, awaitingGate:false, busy:false, current:null, auto:true};
+let drawerRaw='', drawerName='';
+
+/* ---------- markdown ---------- */
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function md(src){
+  const lines=(src||'').split('\n'); let out=[],i=0,inList=false;
+  const cl=()=>{if(inList){out.push('</ul>');inList=false;}};
+  while(i<lines.length){
+    let l=lines[i];
+    if(l.startsWith('```')){i++;let c=[];while(i<lines.length&&!lines[i].startsWith('```')){c.push(lines[i]);i++;}i++;cl();out.push('<pre><code>'+esc(c.join('\n'))+'</code></pre>');continue;}
+    if(/^\|.*\|/.test(l)){const t=[];while(i<lines.length&&/^\|.*\|/.test(lines[i])){t.push(lines[i]);i++;}cl();out.push(table(t));continue;}
+    let m;
+    if(m=l.match(/^(#{1,3})\s+(.*)/)){cl();const n=m[1].length;out.push(`<h${n}>${inl(m[2])}</h${n}>`);i++;continue;}
+    if(l.match(/^\s*[-*]\s+/)){if(!inList){out.push('<ul>');inList=true;}out.push('<li>'+inl(l.replace(/^\s*[-*]\s+/,''))+'</li>');i++;continue;}
+    if(l.match(/^>\s?/)){cl();out.push('<blockquote>'+inl(l.replace(/^>\s?/,''))+'</blockquote>');i++;continue;}
+    if(l.trim()===''){cl();i++;continue;}
+    cl();out.push('<p>'+inl(l)+'</p>');i++;
+  }
+  cl();return out.join('\n');
+}
+function inl(s){s=esc(s);s=s.replace(/`([^`]+)`/g,'<code>$1</code>');s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  s=s.replace(/(^|[^*])\*([^*]+)\*/g,'$1<em>$2</em>');s=s.replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');return s;}
+function table(rows){const cells=r=>r.split('|').slice(1,-1).map(c=>c.trim());if(!rows.length)return'';
+  const head=cells(rows[0]);let body=rows.slice(1);if(rows[1]&&/^[-:\s|]+$/.test(rows[1]))body=rows.slice(2);
+  let h='<table><thead><tr>'+head.map(c=>`<th>${inl(c)}</th>`).join('')+'</tr></thead><tbody>';
+  for(const r of body)h+='<tr>'+cells(r).map(c=>`<td>${inl(c)}</td>`).join('')+'</tr>';return h+'</tbody></table>';}
+
+/* ---------- backends + home ---------- */
+async function loadBackends(){
+  BACKENDS = await (await fetch('/api/backends')).json();
+  const box=$('#backends'); box.innerHTML='';
+  const vals=Object.values(BACKENDS);
+  vals.forEach((b,idx)=>{
+    const d=el('div','backend'+(b.available?'':' disabled'));
+    d.innerHTML=`<div class="bname"><span class="dot" style="background:${b.available?'var(--green)':'var(--red)'}"></span>${b.label}</div>
+      <div class="meta">${b.available?'Ready ✓':'Not installed — <code>'+b.install+'</code>'}</div>`;
+    if(b.available)d.onclick=()=>{chosenBackend=b.id;[...box.children].forEach(c=>c.classList.remove('sel'));d.classList.add('sel');validate();};
+    box.appendChild(d);
+  });
+  const first=vals.find(b=>b.available);
+  if(first){chosenBackend=first.id;box.children[vals.indexOf(first)].classList.add('sel');}
+  else $('#startMsg').textContent='No backend installed. Install Claude Code or GitHub Copilot CLI.';
+  validate();
+}
+function validate(){$('#startBtn').disabled=!($('#pname').value.trim()&&$('#pproblem').value.trim()&&chosenBackend);}
+$('#pname').addEventListener('input',validate);$('#pproblem').addEventListener('input',validate);
+
+let dashTimer=null;
+function startDash(){ loadProjects(); clearInterval(dashTimer); dashTimer=setInterval(loadProjects,2500); }
+function stopDash(){ clearInterval(dashTimer); dashTimer=null; }
+
+async function loadProjects(){
+  let list;
+  try{ list=await (await fetch('/api/projects')).json(); }catch(e){ return; }
+  const box=$('#projgrid');
+  // overview stats
+  const running=list.filter(p=>p.running).length;
+  const gate=list.filter(p=>p.awaiting_gate||(!p.running&&p.current_phase==='2b-sign-off')).length;
+  const done=list.filter(p=>p.complete).length;
+  $('#dashMeta').innerHTML = list.length? (
+    `<span class="st"><b>${list.length}</b> total</span>`+
+    (running?`<span class="st pill run"><span class="rd"></span><b>${running}</b> running</span>`:'')+
+    (gate?`<span class="st pill gate"><b>${gate}</b> at sign-off</span>`:'')+
+    (done?`<span class="st pill done"><b>${done}</b> complete</span>`:'')
+  ):'';
+  if(!list.length){box.innerHTML='<div class="empty">No projects yet — start one above.</div>';return;}
+  box.innerHTML='';
+  for(const p of list){
+    const c=el('div','pcard'+(p.running?' running':''));
+    const status = p.running?'<span class="pill run"><span class="rd"></span>running</span>':
+      (p.complete?'<span class="pill done">complete</span>':
+      ((p.awaiting_gate||p.current_phase==='2b-sign-off')?'<span class="pill gate">🛑 sign-off</span>':
+       `<span class="pill">${p.current_label||'idle'}</span>`));
+    const dots=(p.phases||[]).map(s=>`<i class="${s}"></i>`).join('');
+    const act = p.running&&p.last_activity ? esc(p.last_activity)
+      : (p.complete?'Done — open to view the brief.':(p.last_activity?esc(p.last_activity):'Idle — open to continue.'));
+    const stopBtn = p.running?'<button class="btn danger sm" data-stop>⏹ Stop</button>':'';
+    c.innerHTML=`
+      <div class="pc-top"><div><div class="pn">${esc(p.display_name)}</div>
+        <div class="pf">${esc(p.task_flow)}${p.deploy_mode?' · '+p.deploy_mode.replace('_',' '):''} · ${p.phase_done}/${p.phase_total}</div></div>
+        ${status}</div>
+      <div class="pdots">${dots}</div>
+      <div class="pact">${act}</div>
+      <div class="pc-actions"><button class="btn sm" data-open>${p.complete?'Review':(p.running?'View live':'Open')}</button>${stopBtn}</div>`;
+    const ob=c.querySelector('[data-open]'); ob.onclick=(e)=>{e.stopPropagation();openProject(p.project);};
+    const sb=c.querySelector('[data-stop]');
+    if(sb)sb.onclick=async(e)=>{e.stopPropagation();sb.disabled=true;sb.textContent='Stopping…';
+      await fetch(`/api/projects/${p.project}/stop`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      setTimeout(loadProjects,400);};
+    c.onclick=()=>openProject(p.project);
+    box.appendChild(c);
+  }
+}
+
+$('#startBtn').onclick=async()=>{
+  $('#startBtn').disabled=true;$('#startMsg').textContent='Scaffolding…';
+  const body={name:$('#pname').value.trim(),problem:$('#pproblem').value.trim(),backend:chosenBackend};
+  const res=await fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!res.ok){const e=await res.json();$('#startMsg').textContent='⚠️ '+(e.detail||'failed');$('#startBtn').disabled=false;return;}
+  const data=await res.json(); enterApp(data.project, chosenBackend, false);
+};
+async function openProject(project){
+  const b=Object.values(BACKENDS).find(x=>x.available); chosenBackend=b?b.id:'claude';
+  enterApp(project, chosenBackend, false);   // open for review, don't auto-drive
+}
+
+/* ---------- enter app ---------- */
+function enterApp(project, backend, autodrive){
+  stopDash();
+  PROJECT=project; chosenBackend=backend;
+  $('#home').classList.add('hidden'); $('#app').classList.remove('hidden');
+  $('#backendBadge').textContent='via '+(BACKENDS[backend]?.label||backend);
+  $('#stream').innerHTML=''; ST={complete:false,awaitingGate:false,busy:false,current:null,auto:true};
+  clearPending();
+  openStream(); refreshStatus();
+  if(autodrive) driveContinue();
+}
+function openStream(){
+  if(es)es.close();
+  es=new EventSource(`/api/projects/${PROJECT}/events?backend=${chosenBackend}`);
+  es.onmessage=(e)=>{if(e.data)handle(JSON.parse(e.data));};
+}
+
+/* ---------- events ---------- */
+function handle(ev){
+  switch(ev.kind){
+    case 'state': applyState(ev); break;
+    case 'phase_start': phaseHead(ev.label); currentPhase=ev.phase; streamingBubble=null; serverBusy(true, backendLabel()+' running '+ev.label+'…'); break;
+    case 'phase_end': streamingBubble=null; serverBusy(false); break;
+    case 'chat_start': streamingBubble=null; serverBusy(true, backendLabel()+' is thinking…'); break;
+    case 'agent': addMsg(ev.role||'assistant', ev.text); break;
+    case 'agent_delta': appendDelta(ev.text); break;
+    case 'agent_final': finalizeStream(ev.text); serverBusy(false); break;
+    case 'tool': addTool(ev.text); if(ST.busy)$('#workingText').textContent=backendLabel()+' · '+(ev.text||'working…').slice(0,40); break;
+    case 'gate': renderGate(ev); ST.awaitingGate=true; serverBusy(false); break;
+    case 'checked': serverBusy(false); break;
+    case 'paused': serverBusy(false); break;
+    case 'complete': ST.complete=true; ST.awaitingGate=false; serverBusy(false); break;
+  }
+  scrollDown();
+}
+function scrollDown(){const t=$('#transcript');if(t)t.scrollTop=t.scrollHeight;}
+
+/* ---------- activity indicator (any action → visible "working") ---------- */
+let PENDING=false, pendTimer=null;
+function backendLabel(){return (BACKENDS[chosenBackend]&&BACKENDS[chosenBackend].label)||chosenBackend||'Agent';}
+function markPending(label){
+  PENDING=true; $('#workingText').textContent=label||(backendLabel()+' is working…');
+  clearTimeout(pendTimer); pendTimer=setTimeout(()=>{PENDING=false;renderActivity();},30000);
+  renderActivity();
+}
+function clearPending(){PENDING=false;clearTimeout(pendTimer);renderActivity();}
+function serverBusy(b,label){
+  ST.busy=b;
+  if(b){PENDING=false;clearTimeout(pendTimer);if(label)$('#workingText').textContent=label;}
+  renderActivity();
+}
+function renderActivity(){
+  const working=ST.busy||PENDING;
+  $('#workingBar').classList.toggle('hidden',!working);
+  $('#sendBtn').disabled=working;
+  updateControls();
+}
+async function stopFlow(){
+  markPending('Stopping…');
+  await post(`/api/projects/${PROJECT}/stop`,{});
+  ST.busy=false; clearPending();
+}
+
+function addMsg(role,text){const m=el('div','msg '+role);m.appendChild(el('div','av',{assistant:'AI',user:'You',system:'·'}[role]||'AI'));
+  const b=el('div','bubble md',md(text||''));m.appendChild(b);$('#stream').appendChild(m);return b;}
+function phaseHead(label){const h=el('div','phase-head');h.innerHTML=`<div class="bar"></div><div class="lbl">${label}</div><div class="bar"></div>`;$('#stream').appendChild(h);}
+function appendDelta(t){if(!streamingBubble){const m=el('div','msg assistant');m.appendChild(el('div','av','AI'));streamingBubble=el('div','bubble md streaming');streamingBubble._raw='';m.appendChild(streamingBubble);$('#stream').appendChild(m);}
+  streamingBubble._raw+=t;streamingBubble.innerHTML=md(streamingBubble._raw);}
+function finalizeStream(full){
+  if(streamingBubble){streamingBubble.classList.remove('streaming');if(full)streamingBubble.innerHTML=md(full);}
+  else if(full&&full.trim()){addMsg('assistant',full);}   // replayed history — no live streaming bubble
+  streamingBubble=null;}
+function addTool(text){let holder=$('#stream').lastElementChild;
+  if(!holder||!holder.classList.contains('msg')){holder=addMsg('system','').closest('.msg');}
+  let tools=holder.querySelector('.tools');if(!tools){tools=el('div','tools');(holder.querySelector('.bubble')||holder).appendChild(tools);}
+  tools.appendChild(el('span','tool',esc(text)));}
+
+/* ---------- gate ---------- */
+function renderGate(ev){
+  const g=el('div','gate');
+  const diag=ev.diagram?`<pre class="diagram">${esc(ev.diagram)}</pre>`:'';
+  g.innerHTML=`<div class="box">
+    <div class="bh"><span>🛑</span><span class="t">Sign-off — ${esc(ev.display_name)}</span>${ev.revisions?`<span class="pill">revision ${ev.revisions}/3</span>`:''}</div>
+    <div class="facts"><span>Pattern <b>${esc(ev.task_flow)}</b></span><span><b>${ev.item_count}</b> Fabric items</span><span><b>${ev.wave_count}</b> deployment waves</span></div>
+    ${diag}
+    <div class="actions">
+      <div class="approve-row"><button class="btn" data-mode="live">Approve · Deploy live</button><button class="btn artifacts" data-mode="artifacts_only">Approve · Artifacts only</button></div>
+      <div class="revise"><textarea id="revText" placeholder="Or request changes — describe what to revise…"></textarea><button class="btn ghost" id="reviseBtn">Revise</button></div>
+      <div class="rev-note">Live deploys to a Fabric workspace (needs <code>az login</code>). Artifacts-only generates scripts without deploying. Max 3 revision cycles.</div>
+    </div></div>`;
+  $('#stream').appendChild(g);
+  g.querySelectorAll('.approve-row .btn').forEach(btn=>btn.onclick=async()=>{disableGate(g);
+    markPending(btn.dataset.mode==='live'?'Approving — starting deployment…':'Approving — generating artifacts…');
+    await post(`/api/projects/${PROJECT}/approve`,{deploy_mode:btn.dataset.mode});ST.awaitingGate=false;updateControls();});
+  g.querySelector('#reviseBtn').onclick=()=>doRevise(g,g.querySelector('#revText').value);
+}
+function disableGate(g){g.querySelectorAll('button,textarea').forEach(x=>x.disabled=true);g.style.opacity=.6;}
+async function doRevise(g,fb){fb=(fb||'').trim();if(!fb){toast('Describe what to revise');return;}if(g)disableGate(g);
+  addMsg('user','Revise: '+fb); scrollDown();
+  markPending(backendLabel()+' is revising the design…');
+  const r=await fetch(`/api/projects/${PROJECT}/revise`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feedback:fb,backend:chosenBackend})});
+  if(!r.ok){const e=await r.json().catch(()=>({}));clearPending();addMsg('system','⚠️ '+(e.detail||'Revise failed.'));}
+  ST.awaitingGate=false;updateControls();}
+
+/* ---------- composer (chat anytime) ---------- */
+$('#sendBtn').onclick=send;
+$('#composer').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
+async function send(){
+  const t=$('#composer').value.trim();if(!t)return;
+  if(ST.busy||PENDING){toast('The agent is working — wait for it to finish or press Stop.');return;}
+  addMsg('user',t); scrollDown();               // optimistic — always shows immediately
+  $('#composer').value='';
+  markPending(backendLabel()+' is thinking…');   // instant "working" feedback
+  const r=await fetch(`/api/projects/${PROJECT}/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:t,backend:chosenBackend})});
+  if(!r.ok){const e=await r.json().catch(()=>({}));clearPending();addMsg('system','⚠️ '+(e.detail||'Could not send — try again in a moment.'));scrollDown();}
+}
+/* auto-advance toggle */
+$('#autoToggle').addEventListener('change',async(e)=>{
+  const v=e.target.checked; ST.auto=v;
+  await post(`/api/projects/${PROJECT}/mode`,{auto_advance:v,backend:chosenBackend});
+});
+/* stop buttons */
+$('#stopBtn').onclick=stopFlow;
+$('#stopMini').onclick=stopFlow;
+/* draggable resize for the message box */
+(function(){
+  const grip=$('#composerGrip'), ta=$('#composer');
+  try{const h=localStorage.getItem('ftf_composer_h'); if(h)ta.style.height=h;}catch(e){}
+  let startY=0,startH=0;
+  const move=(ev)=>{const y=ev.touches?ev.touches[0].clientY:ev.clientY;
+    let h=startH+(startY-y); h=Math.max(52,Math.min(h,Math.round(window.innerHeight*0.6)));
+    ta.style.height=h+'px';};
+  const up=()=>{grip.classList.remove('drag');document.body.style.userSelect='';
+    document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);
+    try{localStorage.setItem('ftf_composer_h',ta.style.height);}catch(e){}};
+  grip.addEventListener('pointerdown',(ev)=>{ev.preventDefault();
+    startY=ev.clientY;startH=ta.offsetHeight;grip.classList.add('drag');document.body.style.userSelect='none';
+    document.addEventListener('pointermove',move);document.addEventListener('pointerup',up);});
+  grip.addEventListener('dblclick',()=>{ta.style.height='72px';try{localStorage.setItem('ftf_composer_h','72px');}catch(e){}});
+})();
+function updateControls(){
+  const working=ST.busy||PENDING;
+  $('#composerHint').textContent = working?'Working… press Stop to halt.':
+    (ST.awaitingGate?'At sign-off: approve above, or type feedback + Send / Revise.':
+     'Chat with the agent anytime. Phases run automatically; you approve at the sign-off gate.');
+  $('#stopWrap').classList.toggle('hidden',!working);
+  const showCont = !working && !ST.complete && !ST.awaitingGate && ST.current && ST.current!=='2b-sign-off';
+  $('#continueWrap').classList.toggle('hidden',!showCont);
+}
+
+/* ---------- continue / status / timeline ---------- */
+$('#continueBtn').onclick=driveContinue;
+async function driveContinue(){markPending(backendLabel()+' is working…');await post(`/api/projects/${PROJECT}/resume`,{backend:chosenBackend});}
+async function refreshStatus(){
+  const s=await (await fetch(`/api/projects/${PROJECT}/status`)).json();
+  applyState({phases:s.phases,task_flow:s.task_flow,current_phase:s.current_phase,deploy_mode:s.deploy_mode,complete:s.complete,display_name:s.display_name,docs:s.docs,auto_advance:s.auto_advance,busy:s.busy});
+  ST.awaitingGate=s.awaiting_gate; updateControls();
+}
+function applyState(ev){
+  if(ev.display_name)$('#pjName').textContent=ev.display_name;
+  $('#pjFlow').textContent=(ev.task_flow||'TBD')+(ev.deploy_mode?(' · '+ev.deploy_mode.replace('_',' ')):'');
+  if('complete' in ev)ST.complete=ev.complete;
+  if(ev.current_phase)ST.current=ev.current_phase;
+  if('auto_advance' in ev){ST.auto=ev.auto_advance;$('#autoToggle').checked=ev.auto_advance;}
+  if('busy' in ev){ST.busy=ev.busy; if(ev.busy&&!$('#workingText').textContent.trim())$('#workingText').textContent=backendLabel()+' is working…';}
+  if(ev.phases)renderTimeline(ev.phases);
+  if(ev.docs)renderDocs(ev.docs); else if(ev.phases)renderDocs(ev.phases.filter(p=>p.output).map(p=>p.output.replace('docs/','')));
+  renderActivity();
+}
+function renderTimeline(phases){
+  const t=$('#timeline');t.innerHTML='';
+  for(const p of phases){
+    const row=el('div','phase '+p.status);
+    const ic=p.status==='complete'?'✓':(p.status==='in_progress'?'●':'');
+    row.innerHTML=`<div class="ic">${ic}</div><div class="lbl">${p.label}</div>${p.gate?'<span class="gatetag">gate</span>':''}<div class="acts"></div>`;
+    const acts=row.querySelector('.acts');
+    const docName=p.output?p.output.replace('docs/',''):null;
+    if(docName){
+      const rv=el('button','iconbtn','📄');rv.title='Review deliverable';rv.onclick=(e)=>{e.stopPropagation();openDoc(docName,false);};acts.appendChild(rv);
+      const ed=el('button','iconbtn','✏️');ed.title='Edit deliverable';ed.onclick=(e)=>{e.stopPropagation();openDoc(docName,true);};acts.appendChild(ed);
+    }
+    const rd=el('button','iconbtn','↻');rd.title='Redo from this phase';rd.onclick=(e)=>{e.stopPropagation();redo(p.id,p.label);};acts.appendChild(rd);
+    t.appendChild(row);
+  }
+}
+async function redo(phase,label){
+  if(ST.busy||PENDING){toast('Agent is working — press Stop first.');return;}
+  if(!confirm(`Redo from "${label}"? This clears later phases and re-runs the agent from here.`))return;
+  markPending(backendLabel()+' redoing '+label+'…');
+  const r=await fetch(`/api/projects/${PROJECT}/reset`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phase,rerun:true,backend:chosenBackend})});
+  if(!r.ok){const e=await r.json().catch(()=>({}));clearPending();toast('⚠️ '+(e.detail||'reset failed'));}
+}
+
+/* ---------- docs ---------- */
+function renderDocs(docs){
+  const box=$('#docList');
+  if(!docs||!docs.length){box.innerHTML='<div class="empty">Generated as phases complete…</div>';return;}
+  box.innerHTML='';
+  for(const d of docs){const b=el('button','doc','<span>📄</span><span>'+d+'</span>');b.onclick=()=>openDoc(d,false);box.appendChild(b);}
+}
+async function openDoc(name,edit){
+  const r=await fetch(`/api/projects/${PROJECT}/doc?name=${encodeURIComponent(name)}`);
+  if(!r.ok){toast('Could not open '+name);return;}
+  const data=await r.json(); drawerRaw=data.content; drawerName=name;
+  $('#drawerName').textContent=name; $('#drawer').classList.add('open');
+  edit?enterEdit():showRendered();
+}
+function showRendered(){$('#drawerBody').innerHTML=md(drawerRaw);$('#editBtn').classList.remove('hidden');
+  $('#saveBtn').classList.add('hidden');$('#cancelBtn').classList.add('hidden');$('#drawerBody').classList.add('md');}
+function enterEdit(){
+  $('#drawerBody').classList.remove('md');
+  $('#drawerBody').innerHTML='<textarea id="editArea"></textarea>';
+  $('#editArea').value=drawerRaw;
+  $('#editBtn').classList.add('hidden');$('#saveBtn').classList.remove('hidden');$('#cancelBtn').classList.remove('hidden');
+}
+$('#editBtn').onclick=enterEdit;
+$('#cancelBtn').onclick=showRendered;
+$('#saveBtn').onclick=async()=>{
+  const content=$('#editArea').value;
+  const r=await fetch(`/api/projects/${PROJECT}/doc`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:drawerName,content})});
+  if(!r.ok){const e=await r.json().catch(()=>({}));toast('⚠️ '+(e.detail||'save failed'));return;}
+  drawerRaw=content; showRendered(); toast('Saved ✓');
+};
+$('#drawerClose').onclick=()=>$('#drawer').classList.remove('open');
+
+/* ---------- check / heal ---------- */
+$('#checkBtn').onclick=()=>{markPending('Checking for errors…');post(`/api/projects/${PROJECT}/check`,{heal:false});};
+$('#healBtn').onclick=()=>{if(confirm('Reconcile pipeline state from file evidence?')){markPending('Reconciling state…');post(`/api/projects/${PROJECT}/check`,{heal:true});}};
+
+/* ---------- nav ---------- */
+$('#homeBtn').onclick=()=>{if(es)es.close();$('#app').classList.add('hidden');$('#home').classList.remove('hidden');startDash();};
+
+/* ---------- helpers ---------- */
+async function post(url,body){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  if(!r.ok){const e=await r.json().catch(()=>({}));toast('⚠️ '+(e.detail||'request failed'));}return r;}
+let toastT=null;
+function toast(m){let t=$('.toast');if(t)t.remove();t=el('div','toast',m);document.body.appendChild(t);clearTimeout(toastT);toastT=setTimeout(()=>t.remove(),2800);}
+
+loadBackends(); startDash();
+// pause polling when the tab is hidden to save cycles
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){stopDash();}
+  else if(!$('#home').classList.contains('hidden')){startDash();}
+});
+</script>
+</body>
+</html>
