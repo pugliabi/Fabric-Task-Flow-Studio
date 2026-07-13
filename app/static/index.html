@@ -79,6 +79,47 @@
   .pill.run .rd{display:inline-block;width:6px;height:6px;border-radius:50%;background:#6ea8ff;margin-right:4px;animation:pulse 1s infinite}
   .empty{color:var(--muted);font-size:12.5px}
 
+  /* ---------- Home: "what do you want to build?" ---------- */
+  #home{min-height:100vh;display:flex;flex-direction:column;max-width:none;margin:0;padding:0}
+  .home-top{display:flex;align-items:center;justify-content:space-between;padding:18px 26px}
+  .home-brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px}
+  .home-brand img{width:30px;height:30px}
+  .proj-toggle{display:flex;align-items:center;gap:2px;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600}
+  .proj-toggle:hover{border-color:var(--accent)}
+  .proj-toggle .cnt{background:var(--accent);color:#fff;border-radius:20px;font-size:11px;padding:1px 7px;margin-left:6px;min-width:18px;text-align:center}
+  .hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 24px 9vh;gap:18px}
+  .hero-logo{width:60px;height:60px;margin-bottom:2px;filter:drop-shadow(0 8px 24px rgba(76,141,255,.35))}
+  .hero-q{font-size:clamp(28px,4vw,42px);font-weight:800;margin:0;letter-spacing:-.5px;
+    background:linear-gradient(90deg,#eaf1ff,#bcd0ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero-sub{font-size:15px;color:var(--muted);max-width:640px;margin:0;line-height:1.55}
+  .askbox{width:100%;max-width:700px;background:var(--panel);border:1.5px solid var(--line);border-radius:20px;
+    padding:14px 14px 12px;box-shadow:0 16px 50px rgba(0,0,0,.4);transition:.15s}
+  .askbox:focus-within{border-color:var(--accent);box-shadow:0 16px 54px rgba(76,141,255,.20)}
+  .askbox textarea{width:100%;background:transparent;border:none;color:var(--text);font-size:16px;line-height:1.5;
+    resize:none;outline:none;font-family:inherit;min-height:78px;padding:6px 8px}
+  .askbox-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:2px 4px 0}
+  .backends-mini{display:flex;gap:6px;flex-wrap:wrap}
+  .bmini{display:flex;align-items:center;gap:6px;background:var(--panel-2);border:1px solid var(--line);border-radius:20px;
+    padding:5px 11px;font-size:12px;color:var(--muted);cursor:pointer;transition:.12s}
+  .bmini.sel{border-color:var(--accent);color:var(--text);background:#16233b}
+  .bmini.disabled{opacity:.45;cursor:not-allowed}
+  .bmini .dot{width:7px;height:7px;border-radius:50%}
+  .btn.build{font-size:15px;padding:11px 24px;border-radius:12px}
+  .examples{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center;max-width:700px}
+  .examples .lbl{color:var(--muted);font-size:12.5px}
+  .chip{background:var(--panel-2);border:1px solid var(--line);color:var(--muted);border-radius:20px;padding:6px 12px;font-size:12.5px}
+  .chip:hover{border-color:var(--accent);color:var(--text)}
+  .startmsg{color:var(--muted);font-size:12.5px;min-height:18px}
+  /* slide-out projects panel */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .18s;z-index:30}
+  .scrim.open{opacity:1;pointer-events:auto}
+  .proj-panel{position:fixed;top:0;right:0;height:100vh;width:min(470px,94vw);background:var(--panel);border-left:1px solid var(--line);
+    transform:translateX(100%);transition:transform .2s;z-index:31;display:flex;flex-direction:column}
+  .proj-panel.open{transform:none}
+  .pp-head{display:flex;align-items:flex-start;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line)}
+  .pp-head .meta{margin-top:5px;display:flex;gap:8px;flex-wrap:wrap}
+  .proj-panel .projgrid{grid-template-columns:1fr;padding:14px 16px;overflow:auto;gap:10px}
+
   /* ---------- App shell ---------- */
   /* height:100vh + overflow:hidden on the shell, and min-height:0 on the scroll
      columns, so ONLY #transcript scrolls — the sidebar (phases/items) and the
@@ -195,52 +236,36 @@
 
 <!-- ============ HOME ============ -->
 <section id="home">
-  <div class="brand">
-    <svg class="logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="logo">
-      <defs>
-        <linearGradient id="ltile" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5a97ff"/><stop offset="1" stop-color="#7c5cff"/></linearGradient>
-        <linearGradient id="lnode" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2fe0c0"/><stop offset="1" stop-color="#eafff9"/></linearGradient>
-      </defs>
-      <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#ltile)"/>
-      <path d="M17 47 C 31 47, 29 25, 45 20" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
-      <circle cx="17" cy="47" r="6.5" fill="#fff"/>
-      <g transform="translate(45 20) rotate(45)"><rect x="-9.5" y="-9.5" width="19" height="19" rx="4.5" fill="url(#lnode)" stroke="#fff" stroke-width="3"/></g>
-    </svg>
-    <div><h1>Fabric Task Flows Studio</h1><p>From problem to production — chat your way through the whole pipeline.</p></div>
+  <div class="home-top">
+    <div class="home-brand"><img src="/static/favicon.svg" alt=""/><span>Fabric Task Flows Studio</span></div>
+    <button class="proj-toggle" id="projToggle">▚&nbsp; Projects<span class="cnt hidden" id="projCount"></span></button>
   </div>
 
-  <div class="grid2">
-    <div class="card">
-      <h2>New project</h2>
-      <p class="sub">Describe a business problem. The agent maps an architecture, tests it, and deploys — you approve at sign-off.</p>
-      <label class="fld"><span>Project name</span>
-        <input id="pname" type="text" placeholder="e.g. Farm Fleet Telemetry" autocomplete="off"/></label>
-      <label class="fld"><span>Problem statement</span>
-        <textarea id="pproblem" placeholder="e.g. We stream sensor data from 400 tractors and want hourly utilization dashboards and anomaly alerts."></textarea></label>
-      <label class="fld"><span>Backend — who drives the agent</span></label>
-      <div class="backends" id="backends"></div>
-      <div class="row" style="margin-top:16px">
-        <button class="btn" id="startBtn" disabled>Start pipeline →</button>
-        <span id="startMsg" style="color:var(--muted);font-size:12.5px"></span>
+  <div class="hero">
+    <img class="hero-logo" src="/static/favicon.svg" alt=""/>
+    <h1 class="hero-q">What do you want to build?</h1>
+    <p class="hero-sub">Describe it in a sentence. One box — and the agent designs the Microsoft Fabric architecture, tests it, and produces deployment-ready artifacts.</p>
+
+    <div class="askbox">
+      <textarea id="pproblem" rows="3" placeholder="e.g. We stream sensor data from 400 tractors and want hourly utilization dashboards and anomaly alerts."></textarea>
+      <div class="askbox-row">
+        <div class="backends-mini" id="backends"></div>
+        <button class="btn build" id="startBtn" disabled>Build&nbsp;→</button>
       </div>
     </div>
 
-    <div class="card">
-      <h2>Start tips</h2>
-      <p class="sub">Each project runs as its own background agent. You can run several at once and watch them all here — no tab-switching.</p>
-      <ul style="color:var(--muted);font-size:12.5px;margin:0;padding-left:18px;line-height:1.9">
-        <li>Approve at the 🛑 sign-off gate (live deploy or artifacts-only)</li>
-        <li>Review · edit · redo any phase from the timeline</li>
-        <li>Chat with the agent anytime; ⏹ Stop halts a run</li>
-      </ul>
-    </div>
+    <div class="examples" id="examples"></div>
+    <div class="startmsg" id="startMsg"></div>
   </div>
 
-  <div class="dash-head">
-    <h2>Projects</h2>
-    <div class="meta" id="dashMeta"></div>
-  </div>
-  <div class="projgrid" id="projgrid"><div class="empty">No projects yet.</div></div>
+  <div class="scrim" id="projScrim"></div>
+  <aside class="proj-panel" id="projPanel">
+    <div class="pp-head">
+      <div><b>Your projects</b><div class="meta" id="dashMeta"></div></div>
+      <button class="xbtn" id="projClose">✕</button>
+    </div>
+    <div class="projgrid" id="projgrid"><div class="empty">No projects yet — build one on the left.</div></div>
+  </aside>
 </section>
 
 <!-- ============ APP ============ -->
@@ -337,10 +362,10 @@ async function loadBackends(){
   BACKENDS = await (await fetch('/api/backends')).json();
   const box=$('#backends'); box.innerHTML='';
   const vals=Object.values(BACKENDS);
-  vals.forEach((b,idx)=>{
-    const d=el('div','backend'+(b.available?'':' disabled'));
-    d.innerHTML=`<div class="bname"><span class="dot" style="background:${b.available?'var(--green)':'var(--red)'}"></span>${b.label}</div>
-      <div class="meta">${b.available?'Ready ✓':'Not installed — <code>'+b.install+'</code>'}</div>`;
+  vals.forEach((b)=>{
+    const d=el('div','bmini'+(b.available?'':' disabled'));
+    d.innerHTML=`<span class="dot" style="background:${b.available?'var(--green)':'var(--red)'}"></span>${b.label}`;
+    d.title=b.available?b.label+' — ready':b.label+' — not installed: '+b.install;
     if(b.available)d.onclick=()=>{chosenBackend=b.id;[...box.children].forEach(c=>c.classList.remove('sel'));d.classList.add('sel');validate();};
     box.appendChild(d);
   });
@@ -349,8 +374,29 @@ async function loadBackends(){
   else $('#startMsg').textContent='No backend installed. Install Claude Code or GitHub Copilot CLI.';
   validate();
 }
-function validate(){$('#startBtn').disabled=!($('#pname').value.trim()&&$('#pproblem').value.trim()&&chosenBackend);}
-$('#pname').addEventListener('input',validate);$('#pproblem').addEventListener('input',validate);
+function validate(){$('#startBtn').disabled=!($('#pproblem').value.trim()&&chosenBackend);}
+$('#pproblem').addEventListener('input',validate);
+$('#pproblem').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(!$('#startBtn').disabled)build();}});
+
+/* example prompts */
+const EXAMPLES=[
+  ["Retail sales dashboard","We run 30 retail stores and want an hourly sales dashboard by region plus a low-stock restock alert."],
+  ["IoT anomaly alerts","We stream sensor data from 400 machines and want near real-time anomaly detection with alerts."],
+  ["Customer 360","Unify CRM, support tickets, and billing into a single customer view with churn-risk scoring."],
+  ["Finance reporting","Consolidate monthly GL exports from 6 subsidiaries into governed financial dashboards."],
+];
+function renderExamples(){
+  const e=$('#examples'); e.innerHTML='<span class="lbl">Try:</span>';
+  EXAMPLES.forEach(([label,txt])=>{const c=el('button','chip',label);
+    c.onclick=()=>{$('#pproblem').value=txt;validate();$('#pproblem').focus();};e.appendChild(c);});
+}
+
+/* slide-out projects panel */
+function openProjPanel(){$('#projPanel').classList.add('open');$('#projScrim').classList.add('open');loadProjects();}
+function closeProjPanel(){$('#projPanel').classList.remove('open');$('#projScrim').classList.remove('open');}
+$('#projToggle').onclick=openProjPanel;
+$('#projClose').onclick=closeProjPanel;
+$('#projScrim').onclick=closeProjPanel;
 
 let dashTimer=null;
 function startDash(){ loadProjects(); clearInterval(dashTimer); dashTimer=setInterval(loadProjects,2500); }
@@ -364,13 +410,14 @@ async function loadProjects(){
   const running=list.filter(p=>p.running).length;
   const gate=list.filter(p=>p.awaiting_gate||(!p.running&&p.current_phase==='2b-sign-off')).length;
   const done=list.filter(p=>p.complete).length;
+  const cnt=$('#projCount'); if(cnt){cnt.textContent=list.length; cnt.classList.toggle('hidden',!list.length);}
   $('#dashMeta').innerHTML = list.length? (
     `<span class="st"><b>${list.length}</b> total</span>`+
     (running?`<span class="st pill run"><span class="rd"></span><b>${running}</b> running</span>`:'')+
     (gate?`<span class="st pill gate"><b>${gate}</b> at sign-off</span>`:'')+
     (done?`<span class="st pill done"><b>${done}</b> complete</span>`:'')
   ):'';
-  if(!list.length){box.innerHTML='<div class="empty">No projects yet — start one above.</div>';return;}
+  if(!list.length){box.innerHTML='<div class="empty">No projects yet — build one on the left.</div>';return;}
   box.innerHTML='';
   for(const p of list){
     const c=el('div','pcard'+(p.running?' running':''));
@@ -399,13 +446,14 @@ async function loadProjects(){
   }
 }
 
-$('#startBtn').onclick=async()=>{
-  $('#startBtn').disabled=true;$('#startMsg').textContent='Scaffolding…';
-  const body={name:$('#pname').value.trim(),problem:$('#pproblem').value.trim(),backend:chosenBackend};
-  const res=await fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  if(!res.ok){const e=await res.json();$('#startMsg').textContent='⚠️ '+(e.detail||'failed');$('#startBtn').disabled=false;return;}
+$('#startBtn').onclick=build;
+async function build(){
+  const problem=$('#pproblem').value.trim(); if(!problem||!chosenBackend)return;
+  $('#startBtn').disabled=true;$('#startMsg').textContent='Scaffolding your project…';
+  const res=await fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({problem,backend:chosenBackend})});
+  if(!res.ok){const e=await res.json().catch(()=>({}));$('#startMsg').textContent='⚠️ '+(e.detail||'failed');$('#startBtn').disabled=false;return;}
   const data=await res.json(); enterApp(data.project, chosenBackend, false);
-};
+}
 async function openProject(project){
   const b=Object.values(BACKENDS).find(x=>x.available); chosenBackend=b?b.id:'claude';
   enterApp(project, chosenBackend, false);   // open for review, don't auto-drive
@@ -651,6 +699,7 @@ function toast(m){let t=$('.toast');if(t)t.remove();t=el('div','toast',m);docume
 
 // init — supports deep-links:  ?open=<project>  and optional  &doc=<file.md>
 (async()=>{
+  renderExamples();
   await loadBackends();
   const params=new URLSearchParams(location.search);
   const openP=params.get('open');

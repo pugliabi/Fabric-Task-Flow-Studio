@@ -81,16 +81,34 @@ def projects():
 # Start / resume a run
 # --------------------------------------------------------------------------
 
+_NAME_STOPWORDS = {
+    "a", "an", "the", "we", "our", "i", "to", "and", "of", "for", "with", "from",
+    "that", "this", "want", "wants", "need", "needs", "have", "has", "get", "build",
+    "make", "some", "using", "use", "on", "in", "at", "by", "is", "are", "be", "our",
+    "want", "would", "like", "into", "across", "plus", "per",
+}
+
+
+def _derive_name(problem: str) -> str:
+    """Turn a one-line problem statement into a short project name."""
+    import re
+    words = re.findall(r"[A-Za-z0-9]+", problem)
+    kept = [w for w in words if w.lower() not in _NAME_STOPWORDS][:4]
+    if not kept:
+        kept = words[:4]
+    name = " ".join(w[:1].upper() + w[1:] for w in kept).strip()
+    return name or "Fabric Build"
+
+
 @app.post("/api/start")
 async def start(req: Request):
     body = await req.json()
-    name = (body.get("name") or "").strip()
     problem = (body.get("problem") or "").strip()
     backend = body.get("backend") or "claude"
-    if not name:
-        raise HTTPException(400, "Project name is required")
     if not problem:
-        raise HTTPException(400, "Problem statement is required")
+        raise HTTPException(400, "Tell me what you want to build")
+    # One-box UX: derive a project name from the problem when none is given.
+    name = (body.get("name") or "").strip() or _derive_name(problem)
 
     avail = detect_backends()
     if not avail.get(backend, {}).get("available"):
