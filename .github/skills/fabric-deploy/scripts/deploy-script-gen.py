@@ -931,6 +931,7 @@ def main():
         print("  -- WORKSPACE --")
         if args.workspace_id:
             ws_id = args.workspace_id
+            ws_name = args.workspace or args.workspace_id
         else:
             ws_name = args.workspace or input("  ? Workspace name (Enter = {slug}): ").strip() or "{slug}"
             ws_id = ensure_workspace(ws_name, headers, "{ws_desc_line}")

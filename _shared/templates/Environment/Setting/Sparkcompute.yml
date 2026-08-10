@@ -1,5 +1,10 @@
-instancePool: ""
-targetPlatform: spark
-runtimeVersion: "1.3"
-automaticLog:
-  enabled: true
+enable_native_execution_engine: false
+driver_cores: 4
+driver_memory: 28g
+executor_cores: 4
+executor_memory: 28g
+dynamic_executor_allocation:
+  enabled: false
+  min_executors: 1
+  max_executors: 1
+runtime_version: '1.3'
